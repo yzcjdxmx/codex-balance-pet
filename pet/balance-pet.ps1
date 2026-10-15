@@ -1306,8 +1306,15 @@ $animTimer.Add_Tick({
   }
   if ($state.Expression -eq 'blink' -and $now -gt $state.BlinkUntil) { $state.Expression = 'normal' }
 
-  # 无任务时保持所选常态；任务动画与鼠标闲置时间无关。
-  if (-not $state.TaskBusy -and $state.Expression -eq 'sleepy') { $state.Expression = 'normal' }
+  # 闲置打盹：任务进行中不睡（写字动画优先），超过阈值才蜷起来
+  $idle = ($now - $state.LastInteraction).TotalSeconds
+  if (-not $state.TaskBusy -and $idle -gt $IdleSleepSeconds -and $state.Expression -ne 'sleepy' -and -not $state.Bubble -and -not $state.IsRefreshing) {
+    $state.Expression = 'sleepy'
+  }
+  if ($idle -lt 2 -and $state.Expression -eq 'sleepy') {
+    $state.Expression = 'normal'
+    $state.LastInteraction = $now
+  }
 
   # 呼吸浮动
   if ($state.Expression -eq 'sleepy') {

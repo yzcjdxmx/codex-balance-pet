@@ -1,6 +1,6 @@
 ﻿# 余额桌宠 · Codex Balance Pet
 
-一只蹲在 Windows 桌面上的 DeepSeek 鲸鱼女仆。脚下的牌子跟着**当前模型服务商**显示账户余额或 Codex 额度，能拖动、会说话、会眨眼；跑任务时奋笔疾书，闲置时恢复常态，13 个形象随手切换。
+一只蹲在 Windows 桌面上的 DeepSeek 鲸鱼女仆。脚下的牌子跟着**当前模型服务商**显示账户余额或 Codex 额度，能拖动、会说话、会眨眼；跑任务时奋笔疾书，闲置久了会蜷起来打盹，13 个形象随手切换。
 
 它同时是一个 **Codex 插件**：在对话里问「余额多少」，AI 就能查到实时数据；Codex 一启动，桌宠自己就被拉起来了。
 
@@ -31,7 +31,7 @@
 - **不抢焦点**：默认开启，点击和拖动时保留当前窗口的输入焦点；右键「不抢焦点」可关闭，选择会被记住
 - **点击**：冒一句台词 + 换表情 + 立刻查一次余额
 - **13 个形象轮换**：右键「换个形象」按文件名顺序切换，选择会被记住
-- **表情**：开心（点赞）、难过（担心脸）、打盹（蜷着睡）有独立素材；余额低于阈值自动切难过。没有任务时保持常态，不再按闲置时间自动打盹
+- **表情**：开心（点赞）、难过（担心脸）、打盹（蜷着睡）有独立素材；余额低于阈值自动切难过；闲置超过阈值自动打盹（任务进行中不睡，写字动画优先）
 - **右键菜单**：立即刷新余额 / 账户余额或额度详情（含北京时间重置时间）/ 用量详情 / 打个招呼 / 换个形象 / 不抢焦点 / 回到右下角 / 退出
 - **不吃鼠标**：透明区域不挡点击，能直接点到下面的窗口
 - **随 Codex 启停**：Codex 启动时插件把桌宠无窗口拉起；Codex 进程消失 15 秒后自动关闭；同时只允许一个实例
@@ -154,7 +154,7 @@ pwsh -NoProfile -File pet\balance-pet.ps1 -Preview              # 只渲染合�
 pwsh -NoProfile -File pet\balance-pet.ps1 -Headless             # 只查一次余额，看结果
 ```
 
-`-IdleSleepSeconds` 仅为兼容旧启动命令保留，不再触发自动打盹。
+`-IdleSleepSeconds` 为闲置打盹阈值（默认 150 秒）；任务进行中不会打盹，设一个很大的值即可关闭打盹。
 
 看消耗报告：
 
@@ -222,4 +222,4 @@ pwsh -NoProfile -File tools\install.ps1     # copies pet + plugin into %USERPROF
 # then enable the "balance" plugin from the local marketplace inside Codex
 ```
 
-Requires Windows 10/11, PowerShell 7, Node with `node:sqlite` support, and a logged-in Codex. The pet plays a four-frame writing animation while tasks run and returns to the selected appearance when idle. Refreshing shows animated dots in a speech bubble while retaining the previous quota display. Artwork in `pet\assets\` is bundled from unofficial DeepSeek sticker packs and will be removed on request. Code is MIT licensed.
+Requires Windows 10/11, PowerShell 7, Node with `node:sqlite` support, and a logged-in Codex. The pet plays a four-frame writing animation while tasks run and dozes off after 150s idle (never while a task is running). Refreshing shows animated dots in a speech bubble while retaining the previous quota display. Artwork in `pet\assets\` is bundled from unofficial DeepSeek sticker packs and will be removed on request. Code is MIT licensed.
