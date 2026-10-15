@@ -8,7 +8,7 @@
   <img src="docs/preview/quota.png" width="170" alt="官方额度模式">
   <img src="docs/preview/idle.png" width="170" alt="API 余额 + 心情">
   <img src="docs/preview/talking.png" width="170" alt="点击冒一句台词">
-  <img src="docs/preview/sleepy.png" width="170" alt="打盹表情素材">
+  <img src="docs/preview/blink.png" width="170" alt="真实闭眼帧">
 </p>
 
 <p>
@@ -28,10 +28,11 @@
 - **查询状态气泡**：查询时桌宠说「查询中. → 查询中.. → 查询中...」，每 400 毫秒循环；结束时停止动画并显示原本的台词
 - **任务写字动画**：检测到正在运行的 Codex 任务后，循环播放四帧写字动画，每帧 160 毫秒；任务结束或中止后恢复所选形象。多个任务和子 Agent 会一起判断，查询余额本身不会触发写字
 - **拖动 & 记忆**：按住角色任意位置拖走，位置写进 `pet-state.json`，重启回到原处
+- **不抢焦点**：默认开启，点击和拖动时保留当前窗口的输入焦点；右键「不抢焦点」可关闭，选择会被记住
 - **点击**：冒一句台词 + 换表情 + 立刻查一次余额
 - **13 个形象轮换**：右键「换个形象」按文件名顺序切换，选择会被记住
 - **表情**：开心（点赞）、难过（担心脸）、打盹（蜷着睡）有独立素材；余额低于阈值自动切难过。没有任务时保持常态，不再按闲置时间自动打盹
-- **右键菜单**：立即刷新余额 / 账户余额或额度详情（含北京时间重置时间）/ 用量详情 / 打个招呼 / 换个形象 / 回到右下角 / 退出
+- **右键菜单**：立即刷新余额 / 账户余额或额度详情（含北京时间重置时间）/ 用量详情 / 打个招呼 / 换个形象 / 不抢焦点 / 回到右下角 / 退出
 - **不吃鼠标**：透明区域不挡点击，能直接点到下面的窗口
 - **随 Codex 启停**：Codex 启动时插件把桌宠无窗口拉起；Codex 进程消失 15 秒后自动关闭；同时只允许一个实例
 - **余额记录**：默认每 30 分钟把金额余额追加一行到 `pet\data\balance-log.csv`（正常退出时补一行），配合 `tools\余额报告.ps1` 生成消耗表格 + 曲线图
@@ -65,7 +66,7 @@ pwsh -NoProfile -File tools\install.ps1
 
 装好之后：Codex 一起来桌宠就在角落里；对话框里问「余额多少」「余额低于 20 元提醒我」都能用。
 
-不想等 Codex，想现在就看一眼：双击 `pet\启动余额桌宠.cmd`。
+不想等 Codex，想现在就看一眼：双击 `pet\启动余额桌宠.vbs`。这个入口通过 Windows 脚本宿主隐藏启动，不弹出命令行窗口；原来的 `.cmd` 入口保留用于兼容旧调用。
 
 **只想单独跑桌宠、不装插件**：直接运行 `pet\balance-pet.ps1` 也行，它会自己读 `~\.codex\config.toml` 里的服务商。
 
@@ -83,7 +84,8 @@ codex-balance-pet\
 │   ├── task-activity-store.mjs   只读查询 Codex 的任务状态数据库
 │   ├── pet-host.ps1              常驻 MCP 服务：被插件拉起，顺带提供 pet 工具
 │   ├── winless-launch.ps1        无控制台启动器（CreateProcess + CREATE_NO_WINDOW）
-│   ├── start-pet.ps1 / 启动余额桌宠.cmd   手动启动入口
+│   ├── window-interaction.ps1    窗口与右键菜单的不抢焦点行为
+│   ├── start-pet.ps1 / 启动余额桌宠.vbs   无窗口手动启动入口（另保留 .cmd）
 │   └── assets\                   立绘 PNG 与四帧写字图集 pet-working-atlas-v1.png
 ├── plugin\                     Codex 插件
 │   ├── .agents\plugins\marketplace.json     本地插件市场定义
@@ -130,7 +132,8 @@ codex-balance-pet\
 | `pet-look-01.png` … `pet-look-12.png` | 可轮换形象，右键「换个形象」按文件名顺序切换 |
 | `pet-happy.png` / `pet-sad.png` / `pet-sleepy.png` | 对应心情用真图换脸 |
 | `pet-working-atlas-v1.png` | 透明背景的 2×2 四帧写字图集，按行从左到右播放 |
-| `pet-normal.png` / `pet-blink.png`（可选） | 有就优先用，没有就用主形象 + 特效（洒星星、掉水滴、压扁眨眼） |
+| `pet-normal.png` / `pet-blink.png` | 默认形象的配套睁眼 / 闭眼帧，眨眼直接切图，不再压扁身体 |
+| `pet-look-13-normal.png` / `pet-look-13-blink.png`（可选） | 自定义形象的配套表情帧，不作为独立形象参与轮换；缺少闭眼帧时保留当前形象 |
 
 从网上下到的表情包变成可用立绘：
 
@@ -167,6 +170,9 @@ pwsh -NoProfile -File tools\余额报告.ps1 -Days 1    # 只看最近一天
 ```powershell
 pwsh -NoProfile -File tests\task-activity.test.ps1
 pwsh -NoProfile -File tests\install.test.ps1
+pwsh -NoProfile -File tests\window-interaction.test.ps1
+pwsh -NoProfile -File tests\sprite-frames.test.ps1
+pwsh -NoProfile -File tests\launcher.test.ps1
 ```
 
 ## ❓ 常见问题
@@ -188,9 +194,6 @@ pwsh -NoProfile -File tests\install.test.ps1
 
 ## 🗺 还没做 / 可以一起改进的
 
-- 点它的时候会把输入焦点抢过来，可以加个「不抢焦点」开关
-- 启动器可以改成 `.vbs` 做到完全零闪烁
-- 补一张真正的闭眼帧 `pet-blink.png`（现在是压扁特效代替）
 - 跨平台（macOS / Linux）——现在的窗口层是 Win32 的 `UpdateLayeredWindow`
 
 ## ⚖️ 素材来源与版权
@@ -198,6 +201,7 @@ pwsh -NoProfile -File tests\install.test.ps1
 - **代码**：MIT，见 [LICENSE](LICENSE)
 - **立绘**：`pet\assets\` 里的表情素材是从网上流传的 DeepSeek 表情包（知乎帖《想求一些 DeepSeek 表情包？》里的图片）抠底加工而来，**非官方素材**，版权属于原作者。这里只作为示例形象随仓库提供；**若权利人提出异议，会立刻删除并换成占位图**。你也可以完全替换成自己的图（见上面「换形象」）。
 - **写字动画**：四帧图集参考同一角色形象生成，属于本项目的非官方示例素材。
+- **眨眼帧**：`pet-blink.png` 沿用原默认立绘的闭眼表情；配套的 `pet-normal.png` 用 ImageGen 内置工具生成后缩放为 320×400，提示词为「只将默认立绘的闭眼改成蓝色睁眼，保持人物、姿势、服饰、构图与透明背景一致」。这两帧只用于默认形象。
 - 本项目是个人作品，与 OpenAI、DeepSeek 均无关联，未获得其背书；「Codex」「ChatGPT」「DeepSeek」等名称与标识归各自权利人所有。
 - 余额数据只在你本机读取、只用于本地显示，不会上传到任何地方。
 

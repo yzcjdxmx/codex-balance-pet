@@ -39,6 +39,10 @@ for ($installTestPass = 1; $installTestPass -le 2; $installTestPass++) {
   $installTestMcp = Get-Content -LiteralPath (Join-Path $installTestMarket 'plugins\balance\.mcp.json') -Raw | ConvertFrom-Json
   Assert-InstallTest ($null -ne $installTestMcp.mcpServers.balance_pet) 'The pet MCP service was not registered.'
   Assert-InstallTest (Test-Path -LiteralPath (Join-Path $installTestPet 'task-activity-store.mjs')) 'Task activity helper was not installed.'
+  Assert-InstallTest (Test-Path -LiteralPath (Join-Path $installTestPet 'window-interaction.ps1')) 'Window interaction helper was not installed.'
+  Assert-InstallTest (Test-Path -LiteralPath (Join-Path $installTestPet 'sprite-frames.ps1')) 'Sprite frame helper was not installed.'
+  Assert-InstallTest (Test-Path -LiteralPath (Join-Path $installTestPet '启动余额桌宠.vbs')) 'The VBS launcher was not installed.'
+  Assert-InstallTest (Test-Path -LiteralPath (Join-Path $installTestPet 'assets\pet-blink.png')) 'The closed-eye image was not installed.'
   Assert-InstallTest (Test-Path -LiteralPath (Join-Path $installTestPet 'assets\pet-working-atlas-v1.png')) 'Working animation atlas was not installed.'
 }
 
@@ -47,18 +51,18 @@ $installTestStart = New-PetLaunchStartInfo -CodexDirectory $installTestHome -Pet
 Assert-InstallTest ($installTestStart.Environment['CODEX_HOME'] -ceq $installTestHome) 'Child launch did not inherit the chosen Codex home.'
 Assert-InstallTest ($installTestStart.Environment['BALANCE_ACCOUNT_SCRIPT'] -ceq $installTestAccount) 'Child launch did not receive the installed account module.'
 Assert-InstallTest ($installTestStart.CreateNoWindow -and -not $installTestStart.UseShellExecute) 'Child launch may create a console window.'
-Assert-InstallTest ($installTestStart.ArgumentList[4] -ceq (Join-Path $installTestPet '启动余额桌宠.cmd')) 'Child launch lost the path containing spaces.'
+Assert-InstallTest ([System.IO.Path]::GetFileName($installTestStart.FileName) -ceq 'wscript.exe') 'Installation still launches through a console application.'
+Assert-InstallTest ($installTestStart.ArgumentList[1] -ceq (Join-Path $installTestPet '启动余额桌宠.vbs')) 'Child launch lost the path containing spaces.'
 
 # Execute the same hidden startup configuration against a stub, never the pet.
-$installTestLauncherDirectory = Join-Path $installTestHome 'launcher stub with spaces'
+$installTestLauncherDirectory = Join-Path $installTestHome '启动 fixture with spaces'
 New-Item -ItemType Directory -Force -Path $installTestLauncherDirectory | Out-Null
-$installTestLauncherFile = Join-Path $installTestLauncherDirectory '启动余额桌宠.cmd'
+$installTestLauncherFile = Join-Path $installTestLauncherDirectory 'start-pet.ps1'
 $installTestLauncherBody = @'
-@echo off
-powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -Command "[System.IO.File]::WriteAllText((Join-Path $env:INSTALL_LAUNCH_FIXTURE 'child-environment.json'), (($env:CODEX_HOME, $env:BALANCE_ACCOUNT_SCRIPT) | ConvertTo-Json -Compress), [System.Text.UTF8Encoding]::new($false))"
-exit /b %errorlevel%
+[System.IO.File]::WriteAllText((Join-Path $env:INSTALL_LAUNCH_FIXTURE 'child-environment.json'), (($env:CODEX_HOME, $env:BALANCE_ACCOUNT_SCRIPT) | ConvertTo-Json -Compress), [System.Text.UTF8Encoding]::new($false))
 '@
-[System.IO.File]::WriteAllText($installTestLauncherFile, $installTestLauncherBody.Replace("`n", "`r`n"))
+[System.IO.File]::WriteAllText($installTestLauncherFile, $installTestLauncherBody)
+Copy-Item -LiteralPath (Join-Path $installTestPet '启动余额桌宠.vbs') -Destination $installTestLauncherDirectory
 $installTestChildStart = New-PetLaunchStartInfo -CodexDirectory $installTestHome -PetDirectory $installTestLauncherDirectory -AccountScript $installTestAccount
 $installTestChildStart.Environment['INSTALL_LAUNCH_FIXTURE'] = $installTestLauncherDirectory
 $installTestChildStart.RedirectStandardOutput = $true
@@ -82,4 +86,4 @@ Assert-InstallTest ($installTestChildEnvironment[1] -ceq $installTestAccount) 'A
 Assert-InstallTest ($env:CODEX_HOME -ceq $installTestOriginalHome) 'Installation changed the caller CODEX_HOME.'
 Assert-InstallTest ($env:BALANCE_ACCOUNT_SCRIPT -ceq $installTestOriginalAccount) 'Installation changed the caller BALANCE_ACCOUNT_SCRIPT.'
 
-Write-Host 'PASS: repeat installation preserves user data, deploys marketplace metadata and passes an isolated environment through a real hidden fixture launch.'
+Write-Host 'PASS: repeat installation preserves user data, deploys the VBS launcher and interaction/blink assets, and passes the chosen environment through a real hidden fixture launch.'

@@ -313,6 +313,8 @@ Add-Type -TypeDefinition $artCode -Language CSharp -ReferencedAssemblies @(
 
 #region 素材与配色
 
+. (Join-Path $PSScriptRoot 'sprite-frames.ps1')
+
 function Import-Bitmap {
   # 读进内存副本，避免运行时锁住 assets 里的文件（否则换立绘会被占用挡住）
   param([string]$Path)
@@ -352,23 +354,16 @@ if (Test-Path -LiteralPath $workingAtlasPath) {
 }
 
 # 可轮换的形象：pet-base.png 打头，其余 pet-look-*.png 按名字排序
-$baseArtPath = Join-Path $script:AssetDir 'pet-base.png'
-if (Test-Path -LiteralPath $baseArtPath) { $script:LookFiles += (Resolve-Path -LiteralPath $baseArtPath).Path }
-foreach ($file in @(Get-ChildItem -LiteralPath $script:AssetDir -Filter 'pet-look-*.png' -ErrorAction SilentlyContinue | Sort-Object Name)) {
-  $script:LookFiles += $file.FullName
-}
+$script:LookFiles = @(Get-PetLookFiles -AssetDirectory $script:AssetDir)
 if ($script:LookFiles.Count -eq 0) {
   throw "缺少立绘：$script:AssetDir 里既没有 pet-base.png，也没有 pet-look-*.png"
 }
 
 # 表情真图：有就换脸，没有就用当前形象 + 程序化特效
-foreach ($name in 'happy', 'sad', 'sleepy', 'blink', 'normal') {
+foreach ($name in 'happy', 'sad', 'sleepy') {
   $file = Join-Path $script:AssetDir ("pet-$name.png")
   if (Test-Path -LiteralPath $file) { $script:Sprites[$name] = Import-Bitmap -Path $file }
 }
-
-$script:Sprites['base'] = Import-Bitmap -Path $script:LookFiles[0]
-$script:SubjectBounds = [PetArt]::AlphaBounds($script:Sprites['base'], 8)
 
 function Set-Look {
   param([string]$File)
@@ -377,12 +372,22 @@ function Set-Look {
   $resolved = (Resolve-Path -LiteralPath $File).Path
   $index = [array]::IndexOf($script:LookFiles, $resolved)
   if ($index -lt 0) { return $false }
-  if ($script:Sprites.ContainsKey('base')) { $script:Sprites['base'].Dispose() }
+  foreach ($key in @('base', 'normal', 'blink')) {
+    if ($script:Sprites.ContainsKey($key)) {
+      $script:Sprites[$key].Dispose()
+      $script:Sprites.Remove($key)
+    }
+  }
   $script:Sprites['base'] = Import-Bitmap -Path $resolved
-  $script:SubjectBounds = [PetArt]::AlphaBounds($script:Sprites['base'], 8)
+  $framePaths = Get-PetLookFramePaths -LookPath $resolved
+  foreach ($key in $framePaths.Keys) { $script:Sprites[$key] = Import-Bitmap -Path $framePaths[$key] }
+  $normalSprite = if ($script:Sprites.ContainsKey('normal')) { $script:Sprites['normal'] } else { $script:Sprites['base'] }
+  $script:SubjectBounds = [PetArt]::AlphaBounds($normalSprite, 8)
   $script:LookIndex = $index
   return $true
 }
+
+$null = Set-Look -File $script:LookFiles[0]
 
 $script:Color = @{
   Ok      = [System.Drawing.Color]::FromArgb(74, 222, 154)
@@ -622,12 +627,14 @@ function New-PetFrame {
   $g.Clear([System.Drawing.Color]::Transparent)
 
   # 立绘：有对应表情图就用表情图，否则用主立绘 + 情绪特效
+  # 缺少当前形象的闭眼帧时保留其常态，不压扁身体或换成其他角色姿势。
+  $renderExpression = if ($Expression -eq 'blink' -and -not $script:Sprites.ContainsKey('blink')) { 'normal' } else { $Expression }
   $isWorking = $Expression -eq 'working' -and $null -ne $script:WorkingAtlas
-  $dedicated = $isWorking -or $script:Sprites.ContainsKey($Expression)
+  $dedicated = $isWorking -or $script:Sprites.ContainsKey($renderExpression)
   if ($isWorking) {
     $sprite = $script:WorkingAtlas
   } elseif ($dedicated) {
-    $sprite = $script:Sprites[$Expression]
+    $sprite = $script:Sprites[$renderExpression]
   } elseif ($script:Sprites.ContainsKey('base')) {
     $sprite = $script:Sprites['base']
   } else {
@@ -639,7 +646,6 @@ function New-PetFrame {
   if (-not $dedicated) {
     switch ($Expression) {
       'sad'    { $rotate = -2.0 }
-      'blink'  { $squash = 0.90 }
       'happy'  { $squash = 1.02 }
       'sleepy' { $squash = 0.985 }
     }
@@ -784,6 +790,7 @@ if ($Preview) {
   if (-not (Test-Path $previewDir)) { New-Item -ItemType Directory -Force -Path $previewDir | Out-Null }
   $shots = @(
     @{ Name = 'idle';    Args = @{ Expression = 'normal'; BalanceText = '¥8.47'; StatusColor = 'Ok'; Bob = 0 } },
+    @{ Name = 'blink';   Args = @{ Expression = 'blink'; BalanceText = '¥8.47'; StatusColor = 'Ok'; Bob = 0 } },
     @{ Name = 'talking'; Args = @{ Expression = 'happy'; Bubble = '余额还有 ¥8.47 哦～'; BalanceText = '¥8.47'; StatusColor = 'Ok'; Bob = -3 } },
     @{ Name = 'low';     Args = @{ Expression = 'sad'; Bubble = '余额只剩 ¥4.20 啦…'; BalanceText = '¥4.20'; StatusColor = 'Low'; Bob = 0 } },
     @{ Name = 'sleepy';  Args = @{ Expression = 'sleepy'; BalanceText = '¥8.47'; StatusColor = 'Ok'; Bob = 2 } },
@@ -847,6 +854,7 @@ $script:State = @{
   BobPhase        = 0.0
   StatsText       = ''
   ShowStats       = $true
+  NoActivate      = $true
   LastSignature   = ''
   Frame           = $null
 }
@@ -927,6 +935,7 @@ function Write-PetStatus {
       queried_at  = $script:State.QueriedAt
       refreshing  = [bool]$script:State.IsRefreshing
       show_stats  = [bool]$script:State.ShowStats
+      no_activate = [bool]$script:State.NoActivate
       stats_text  = $script:State.StatsText
       token_requests = $script:Usage.Requests
       token_output = $script:Usage.Output
@@ -1088,6 +1097,7 @@ function Save-PetPosition {
       y         = $script:BaseY
       look      = if ($script:LookFiles.Count -gt 0) { $script:LookFiles[$script:LookIndex] } else { $null }
       stats     = [bool]$script:State.ShowStats
+      noActivate = [bool]$script:State.NoActivate
       updatedAt = (Get-Date).ToString('s')
     } | ConvertTo-Json | Set-Content -LiteralPath $script:StateFile -Encoding utf8
   } catch { }
@@ -1099,7 +1109,8 @@ function Get-SavedState {
       $saved = Get-Content -LiteralPath $script:StateFile -Raw | ConvertFrom-Json
       if ($null -ne $saved.x -and $null -ne $saved.y) {
         $showSavedStats = if ($null -ne $saved.stats) { [bool]$saved.stats } else { $true }
-        return @{ X = [int]$saved.x; Y = [int]$saved.y; Look = $saved.look; Stats = $showSavedStats }
+        $savedNoActivate = if ($saved.noActivate -is [bool]) { $saved.noActivate } else { $true }
+        return @{ X = [int]$saved.x; Y = [int]$saved.y; Look = $saved.look; Stats = $showSavedStats; NoActivate = $savedNoActivate }
       }
     }
   } catch { }
@@ -1111,10 +1122,11 @@ function Get-SavedState {
 #region 交互与主循环
 
 Add-Type -AssemblyName System.Windows.Forms
+. (Join-Path $PSScriptRoot 'window-interaction.ps1')
 [System.Windows.Forms.Application]::EnableVisualStyles()
 try { [System.Windows.Forms.Application]::SetHighDpiMode([System.Windows.Forms.HighDpiMode]::PerMonitorV2) } catch { }
 
-$form = New-Object System.Windows.Forms.Form
+$form = New-Object BalancePetForm
 $form.Text = '余额桌宠'
 $form.FormBorderStyle = 'None'
 $form.StartPosition = 'Manual'
@@ -1131,12 +1143,14 @@ $saved = Get-SavedState
 if ($saved) {
   if ($saved.Look) { $null = Set-Look -File $saved.Look }
   $script:State.ShowStats = [bool]$saved.Stats
+  $script:State.NoActivate = [bool]$saved.NoActivate
   $script:BaseX = $saved.X
   $script:BaseY = $saved.Y
 } else {
   $script:BaseX = $workArea.Right - $script:CanvasW - 40
   $script:BaseY = $workArea.Bottom - $script:CanvasH - 40
 }
+$form.NoActivate = [bool]$script:State.NoActivate
 $form.Location = New-Object System.Drawing.Point($script:BaseX, $script:BaseY)
 
 # 拖动
@@ -1202,6 +1216,9 @@ $itemLook = $menu.Items.Add(('换个形象（共 {0} 个）' -f [Math]::Max(1, $
 $itemStats = $menu.Items.Add('显示用量信息')
 $itemStats.CheckOnClick = $true
 $itemStats.Checked = [bool]$script:State.ShowStats
+$itemNoActivate = $menu.Items.Add('不抢焦点')
+$itemNoActivate.CheckOnClick = $true
+$itemNoActivate.Checked = [bool]$script:State.NoActivate
 $itemUsage = $menu.Items.Add('用量详情')
 $itemAccount = $menu.Items.Add('账户余额 / 额度详情')
 [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
@@ -1249,6 +1266,12 @@ $itemUsage.Add_Click({
   Show-Bubble -Text (Get-UsageDetail) -Seconds 12
   Sync-Frame -Force
 })
+$itemNoActivate.Add_Click({
+  $script:Form.NoActivate = [bool]$itemNoActivate.Checked
+  $script:State.NoActivate = [bool]$itemNoActivate.Checked
+  Save-PetPosition
+  Write-PetStatus
+})
 $itemReset.Add_Click({
   $area = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
   $script:BaseX = $area.Right - $script:CanvasW - 40
@@ -1257,7 +1280,7 @@ $itemReset.Add_Click({
   Save-PetPosition
 })
 $itemExit.Add_Click({ $script:Form.Close() })
-$form.ContextMenuStrip = $menu
+Connect-PetContextMenu -Form $form -Menu $menu
 
 # 动画与状态推进
 $animTimer = New-Object System.Windows.Forms.Timer
@@ -1370,6 +1393,6 @@ $form.Add_FormClosed({
   }
 })
 
-[void]$form.ShowDialog()
+[System.Windows.Forms.Application]::Run($form)
 
 #endregion

@@ -59,12 +59,9 @@ function Get-PetProcesses {
 function New-PetLaunchStartInfo {
   param([string]$CodexDirectory, [string]$PetDirectory, [string]$AccountScript)
   $start = [System.Diagnostics.ProcessStartInfo]::new()
-  $start.FileName = if ($env:ComSpec) { $env:ComSpec } else { 'cmd.exe' }
-  $start.ArgumentList.Add('/d')
-  $start.ArgumentList.Add('/s')
-  $start.ArgumentList.Add('/c')
-  $start.ArgumentList.Add('call')
-  $start.ArgumentList.Add((Join-Path $PetDirectory '启动余额桌宠.cmd'))
+  $start.FileName = Join-Path $env:SystemRoot 'System32\wscript.exe'
+  $start.ArgumentList.Add('//nologo')
+  $start.ArgumentList.Add((Join-Path $PetDirectory '启动余额桌宠.vbs'))
   $start.WorkingDirectory = $PetDirectory
   $start.UseShellExecute = $false
   $start.CreateNoWindow = $true
@@ -89,8 +86,8 @@ Write-Host '=== 2) 桌宠本体 -> 常驻目录 ==='
 New-Item -ItemType Directory -Force -Path (Join-Path $liveRoot 'assets') | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $liveRoot 'data') | Out-Null
 foreach ($file in @('balance-pet.ps1', 'pet-host.ps1', 'account-client.ps1', 'usage-reader.ps1',
-    'task-activity.ps1', 'task-activity-store.mjs', 'start-pet.ps1', 'winless-launch.ps1',
-    'launch_balance_pet.cmd', '启动余额桌宠.cmd')) {
+    'task-activity.ps1', 'task-activity-store.mjs', 'window-interaction.ps1', 'sprite-frames.ps1', 'start-pet.ps1', 'winless-launch.ps1',
+    'launch_balance_pet.cmd', '启动余额桌宠.cmd', '启动余额桌宠.vbs')) {
   Copy-Item -LiteralPath (Join-Path $petSource $file) -Destination $liveRoot -Force
 }
 Copy-Item -Path (Join-Path $petSource 'assets\*') -Destination (Join-Path $liveRoot 'assets') -Force
@@ -169,4 +166,4 @@ Write-Host '安装完成。最后一步在 Codex 里启用插件：'
 Write-Host ('  插件市场目录：' + (Join-Path $CodexHome 'local-marketplaces\balance'))
 Write-Host '  打开 Codex 的插件 / 市场面板，安装 local 市场里的 balance（实时余额）；'
 Write-Host '  装好之后对话框里就能问「余额多少」，Codex 启动时也会顺手把桌宠拉起来。'
-Write-Host '  想直接看桌宠可以先双击 pet\启动余额桌宠.cmd。'
+Write-Host '  想直接看桌宠可以先双击 pet\启动余额桌宠.vbs（隐藏启动）。'
