@@ -95,12 +95,26 @@ function ConvertTo-UsageNumbers {
 }
 
 function Add-UsageDelta {
-  param([hashtable]$Delta, [string]$Timestamp)
+  param([hashtable]$Delta, $Timestamp)
   if (($Delta.Input + $Delta.Output + $Delta.Cached + $Delta.Reasoning) -le 0) { return }
   foreach ($name in @('Input', 'Cached', 'Output', 'Reasoning')) { $script:Usage[$name] += [long]$Delta[$name] }
   $script:Usage.Requests++
   $at = [datetime]::MinValue
-  try { $at = [DateTimeOffset]::Parse($Timestamp, [Globalization.CultureInfo]::InvariantCulture).LocalDateTime } catch { }
+  try {
+    # PowerShell 7 may deserialize ISO timestamps into DateTime automatically.
+    # Keep the typed value: casting it to string first discards its UTC kind.
+    if ($Timestamp -is [DateTimeOffset]) {
+      $at = $Timestamp.LocalDateTime
+    } elseif ($Timestamp -is [datetime]) {
+      if ($Timestamp.Kind -eq [DateTimeKind]::Unspecified) {
+        $Timestamp = [datetime]::SpecifyKind($Timestamp, [DateTimeKind]::Utc)
+      }
+      $at = $Timestamp.ToLocalTime()
+    } else {
+      $at = [DateTimeOffset]::Parse([string]$Timestamp, [Globalization.CultureInfo]::InvariantCulture,
+        [Globalization.DateTimeStyles]::AssumeUniversal).LocalDateTime
+    }
+  } catch { }
   if ($at -ne [datetime]::MinValue -and $Delta.Output -gt 0) {
     $script:Usage.Recent += [pscustomobject]@{ t = $at; output = [long]$Delta.Output }
     if ($script:Usage.Recent.Count -gt 500) { $script:Usage.Recent = @($script:Usage.Recent[-500..-1]) }
@@ -138,7 +152,7 @@ function Read-UsageEvent {
       $script:Usage.LastTotal = $total
       $last = ConvertTo-UsageNumbers $payload.info.last_token_usage
       if ($last) { [void]$script:Usage.SeenEvents.Add((Get-UsageEventSignature -Record $record -Numbers $last)) }
-      Add-UsageDelta -Delta $delta -Timestamp ([string]$record.timestamp)
+      Add-UsageDelta -Delta $delta -Timestamp $record.timestamp
       return
     }
     $numbers = ConvertTo-UsageNumbers $payload.info.last_token_usage
@@ -148,7 +162,7 @@ function Read-UsageEvent {
   if (-not $numbers) { return }
   $signature = Get-UsageEventSignature -Record $record -Numbers $numbers
   if (-not $script:Usage.SeenEvents.Add($signature)) { return }
-  Add-UsageDelta -Delta $numbers -Timestamp ([string]$record.timestamp)
+  Add-UsageDelta -Delta $numbers -Timestamp $record.timestamp
 }
 
 # Incremental bytes plus a UTF-8 decoder keep a split line or multibyte character

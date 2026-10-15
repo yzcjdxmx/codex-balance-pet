@@ -364,6 +364,17 @@ foreach ($name in 'happy', 'sad', 'sleepy') {
   $file = Join-Path $script:AssetDir ("pet-$name.png")
   if (Test-Path -LiteralPath $file) { $script:Sprites[$name] = Import-Bitmap -Path $file }
 }
+$script:SleepyBounds = $null
+if ($script:Sprites.ContainsKey('sleepy')) {
+  $sleepySprite = $script:Sprites['sleepy']
+  $sleepyPixels = [PetArt]::AlphaBounds($sleepySprite, 8)
+  $script:SleepyBounds = @(
+    ($sleepyPixels[0] * $script:SpriteW / $sleepySprite.Width),
+    ($sleepyPixels[1] * $script:SpriteH / $sleepySprite.Height),
+    ($sleepyPixels[2] * $script:SpriteW / $sleepySprite.Width),
+    ($sleepyPixels[3] * $script:SpriteH / $sleepySprite.Height)
+  )
+}
 
 function Set-Look {
   param([string]$File)
@@ -443,11 +454,11 @@ function Get-HourlyCost {
 
 function Update-StatsText {
   $now = Get-Date
-  $cut = $now.AddSeconds(-60)
+  $cut = $now.AddSeconds(-30)
   $recent = @($script:Usage.Recent | Where-Object { $_.t -ge $cut })
   $rate = 0
   if ($recent.Count -gt 0) {
-    $rate = ($recent | Measure-Object -Property output -Sum).Sum / 60.0
+    $rate = ($recent | Measure-Object -Property output -Sum).Sum / 30.0
   }
   $parts = @()
   if ($script:Usage.Requests -gt 0) {
@@ -465,10 +476,10 @@ function Update-StatsText {
 
 function Get-UsageDetail {
   $now = Get-Date
-  $cut = $now.AddSeconds(-60)
+  $cut = $now.AddSeconds(-30)
   $recent = @($script:Usage.Recent | Where-Object { $_.t -ge $cut })
   $rate = 0
-  if ($recent.Count -gt 0) { $rate = ($recent | Measure-Object -Property output -Sum).Sum / 60.0 }
+  if ($recent.Count -gt 0) { $rate = ($recent | Measure-Object -Property output -Sum).Sum / 30.0 }
   $cacheRatio = 0
   if ($script:Usage.Input -gt 0) { $cacheRatio = $script:Usage.Cached / $script:Usage.Input }
   $lines = @(
@@ -476,7 +487,7 @@ function Get-UsageDetail {
     ('输出 ' + (Format-Count $script:Usage.Output) + '（推理 ' + (Format-Count $script:Usage.Reasoning) + '）'),
     ('缓存命中 ' + (Format-Count $script:Usage.Cached) + ' / 输入 ' + (Format-Count $script:Usage.Input)),
     ($script:Usage.Requests.ToString() + ' 次请求'),
-    ('近 1 分钟输出 ' + (Format-Count $rate) + ' tok/s')
+    ('近 30 秒输出 ' + (Format-Count $rate) + ' tok/s')
   )
   $cost = Get-HourlyCost
   if ($cost) { $lines += ('按记录推算 ' + '¥' + $cost + ' / 小时') }
@@ -577,7 +588,7 @@ function Draw-Teardrop {
 }
 
 function Draw-ExpressionEffect {
-  param($G, [string]$Expression, [int]$Bob)
+  param($G, [string]$Expression, [int]$Bob, [int]$SleepAnimationFrame = 0)
 
   # 用主体范围来定位特效，换任何立绘都能跟着走
   $x = $script:SubjectBounds[0] + $script:SpriteX
@@ -597,14 +608,33 @@ function Draw-ExpressionEffect {
       Draw-Teardrop -G $G -X ($x + $w * 0.10) -Y ($y + $h * 0.40) -Size 8 -Color ([System.Drawing.Color]::FromArgb(200, 150, 214, 255))
     }
     'sleepy' {
-      $font1 = New-Object System.Drawing.Font('Segoe UI', 20, [System.Drawing.FontStyle]::Bold)
-      $font2 = New-Object System.Drawing.Font('Segoe UI', 15, [System.Drawing.FontStyle]::Bold)
-      $font3 = New-Object System.Drawing.Font('Segoe UI', 11, [System.Drawing.FontStyle]::Bold)
-      $brush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(235, 150, 190, 255))
-      $G.DrawString('z', $font1, $brush, [float]($x + $w * 0.70), [float]($y - 6))
-      $G.DrawString('z', $font2, $brush, [float]($x + $w * 0.88), [float]($y - 26))
-      $G.DrawString('z', $font3, $brush, [float]($x + $w * 1.00), [float]($y - 42))
-      $font1.Dispose(); $font2.Dispose(); $font3.Dispose(); $brush.Dispose()
+      # Dedicated sleeping art has different transparent margins from the selected look.
+      if ($script:SleepyBounds) {
+        $x = $script:SleepyBounds[0] + $script:SpriteX
+        $y = $script:SleepyBounds[1] + $script:SpriteY + $Bob
+        $w = $script:SleepyBounds[2]
+      }
+      $fontFamily = [System.Drawing.FontFamily]::GenericSansSerif
+      $textFormat = [System.Drawing.StringFormat]::GenericTypographic
+      try { for ($i = 0; $i -lt 3; $i++) {
+        $phase = (($SleepAnimationFrame % 25) / 25.0 + $i / 3.0) % 1.0
+        $alpha = [int][Math]::Round(235 * [Math]::Sin([Math]::PI * $phase))
+        if ($alpha -le 0) { continue }
+        $size = 18 + 12 * $phase
+        $zx = [Math]::Min($script:CanvasW - $size - 10, $x + $w * 0.56 + 48 * $phase + 3 * [Math]::Sin($phase * 2 * [Math]::PI))
+        $zy = [Math]::Max(8, $y - 22 - 62 * $phase)
+        $letter = if ($phase -gt 0.55) { 'Z' } else { 'z' }
+        $path = [System.Drawing.Drawing2D.GraphicsPath]::new()
+        $outline = [System.Drawing.Pen]::new([System.Drawing.Color]::FromArgb($alpha, 35, 53, 92), 2.6)
+        $outline.LineJoin = 'Round'
+        $brush = [System.Drawing.SolidBrush]::new([System.Drawing.Color]::FromArgb($alpha, 186, 214, 255))
+        try {
+          $path.AddString($letter, $fontFamily, [int][System.Drawing.FontStyle]::Bold,
+            [float]$size, [System.Drawing.PointF]::new([float]$zx, [float]$zy), $textFormat)
+          $G.DrawPath($outline, $path)
+          $G.FillPath($brush, $path)
+        } finally { $path.Dispose(); $outline.Dispose(); $brush.Dispose() }
+      } } finally { $fontFamily.Dispose(); $textFormat.Dispose() }
     }
   }
 }
@@ -616,7 +646,8 @@ function New-PetFrame {
     [string]$BalanceText = '—',
     [string]$StatusColor = 'Ok',
     [int]$Bob = 0,
-    [int]$AnimationFrame = 0
+    [int]$AnimationFrame = 0,
+    [int]$SleepAnimationFrame = 0
   )
 
   $bitmap = New-Object System.Drawing.Bitmap($script:CanvasW, $script:CanvasH, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
@@ -679,8 +710,8 @@ function New-PetFrame {
   }
   $g.ResetTransform()
 
-  if (-not $dedicated) {
-    Draw-ExpressionEffect -G $g -Expression $Expression -Bob $Bob
+  if (-not $dedicated -or $Expression -eq 'sleepy') {
+    Draw-ExpressionEffect -G $g -Expression $Expression -Bob $Bob -SleepAnimationFrame $SleepAnimationFrame
   }
 
   # 台词气泡
@@ -794,6 +825,8 @@ if ($Preview) {
     @{ Name = 'talking'; Args = @{ Expression = 'happy'; Bubble = '余额还有 ¥8.47 哦～'; BalanceText = '¥8.47'; StatusColor = 'Ok'; Bob = -3 } },
     @{ Name = 'low';     Args = @{ Expression = 'sad'; Bubble = '余额只剩 ¥4.20 啦…'; BalanceText = '¥4.20'; StatusColor = 'Low'; Bob = 0 } },
     @{ Name = 'sleepy';  Args = @{ Expression = 'sleepy'; BalanceText = '¥8.47'; StatusColor = 'Ok'; Bob = 2 } },
+    @{ Name = 'sleepy-8'; Args = @{ Expression = 'sleepy'; SleepAnimationFrame = 8; BalanceText = '¥8.47'; StatusColor = 'Ok'; Bob = 2 } },
+    @{ Name = 'sleepy-16'; Args = @{ Expression = 'sleepy'; SleepAnimationFrame = 16; BalanceText = '¥8.47'; StatusColor = 'Ok'; Bob = 2 } },
     @{ Name = 'error';   Args = @{ Expression = 'sad'; Bubble = '查询失败：网络不可用'; BalanceText = '查询失败'; StatusColor = 'Error'; Bob = 0 } },
     @{ Name = 'stats';   Args = @{ Expression = 'normal'; BalanceText = '¥5.61'; StatusColor = 'Ok'; Bob = 0 } },
     @{ Name = 'quota';   Args = @{ Expression = 'normal'; BalanceText = '额度 5h 83%｜周 97%'; StatusColor = 'Ok'; Bob = 0 } },
@@ -898,6 +931,13 @@ function Get-WorkingFrame {
   return ([int][Math]::Floor($elapsed / 160) % 4)
 }
 
+function Get-SleepAnimationFrame {
+  param([datetime]$Now = [datetime]::UtcNow)
+  if ((Get-RenderedExpression) -ne 'sleepy') { return 0 }
+  # 25 frames at 120 ms: a gentle three-second loop, independent of token speed.
+  return [int]([Math]::Floor($Now.TimeOfDay.TotalMilliseconds / 120) % 25)
+}
+
 function Update-PetTaskActivity {
   $result = Update-TaskActivity
   $wasBusy = [bool]$script:State.TaskBusy
@@ -943,6 +983,7 @@ function Write-PetStatus {
       active_tasks = $script:State.ActiveTasks
       task_phase  = $script:State.TaskPhase
       animation_frame = Get-WorkingFrame
+      sleep_animation_frame = Get-SleepAnimationFrame
     }
     try { $payload.handle = $script:Form.Handle.ToInt64() } catch { }
     ($payload | ConvertTo-Json -Compress) | Set-Content -LiteralPath $file -Encoding utf8
@@ -954,12 +995,13 @@ function Sync-Frame {
   $bubble = Get-RenderedBubble
   $expression = Get-RenderedExpression
   $animationFrame = Get-WorkingFrame
-  $signature = "$expression|$animationFrame|$bubble|$($script:State.BalanceText)|$($script:State.StatusColor)|$($script:State.StatsText)|$($script:State.ShowStats)"
+  $sleepAnimationFrame = Get-SleepAnimationFrame
+  $signature = "$expression|$animationFrame|$sleepAnimationFrame|$bubble|$($script:State.BalanceText)|$($script:State.StatusColor)|$($script:State.StatsText)|$($script:State.ShowStats)"
   if (-not $Force -and $signature -eq $script:State.LastSignature) { return }
   $script:State.LastSignature = $signature
 
   $frame = New-PetFrame -Expression $expression -Bubble $bubble `
-    -BalanceText $script:State.BalanceText -StatusColor $script:State.StatusColor -Bob 0 -AnimationFrame $animationFrame
+    -BalanceText $script:State.BalanceText -StatusColor $script:State.StatusColor -Bob 0 -AnimationFrame $animationFrame -SleepAnimationFrame $sleepAnimationFrame
   if ($script:State.Frame) { $script:State.Frame.Dispose() }
   $script:State.Frame = $frame
   [PetLayer]::Push($script:Form.Handle, $frame, $script:BaseX, ($script:BaseY + $script:Bob))
