@@ -453,9 +453,11 @@ function Get-HourlyCost {
 }
 
 function Update-StatsText {
+  param([switch]$ReuseCost)
   $now = Get-Date
   $cut = $now.AddSeconds(-30)
   $recent = @($script:Usage.Recent | Where-Object { $_.t -ge $cut })
+  $script:Usage.Recent = $recent
   $rate = 0
   if ($recent.Count -gt 0) {
     $rate = ($recent | Measure-Object -Property output -Sum).Sum / 30.0
@@ -469,9 +471,28 @@ function Update-StatsText {
   }
   $rateText = if ($rate -ge 1000) { Format-Count $rate } else { '{0:0.#}' -f $rate }
   $parts += ($rateText + ' tok/s')
-  $cost = Get-HourlyCost
+  $costKey = "$($script:State.AccountKind)|$($script:State.AccountSource)|$($script:State.Currency)|$($script:State.LastError)"
+  $cost = $null
+  if (-not $ReuseCost) {
+    $cost = Get-HourlyCost
+    $script:State.CachedHourlyCost = $cost
+    $script:State.CachedCostKey = $costKey
+  } elseif ($script:State.CachedCostKey -eq $costKey) {
+    $cost = $script:State.CachedHourlyCost
+  }
   if ($cost) { $parts += ('¥' + $cost + '/h') }
   $script:State.StatsText = ($parts -join '｜')
+}
+
+function Update-FastUsageStats {
+  if (-not $script:State.ShowStats) { return }
+  $previousText = $script:State.StatsText
+  Update-UsageStats -SelectedFileOnly
+  Update-StatsText -ReuseCost
+  if ($script:State.StatsText -ne $previousText) {
+    # The existing 120 ms animation tick paints the new text; do not draw twice.
+    Write-PetStatus
+  }
 }
 
 function Get-UsageDetail {
@@ -1392,7 +1413,7 @@ $watchdogTimer.Add_Tick({
   }
 })
 
-# 用量统计：每 5 秒增量读一次会话记录，只在开启显示时重绘
+# Every five seconds: discover session changes, catch up history and refresh costs.
 $statsTimer = New-Object System.Windows.Forms.Timer
 $statsTimer.Interval = 5000
 $statsTimer.Add_Tick({
@@ -1403,6 +1424,10 @@ $statsTimer.Add_Tick({
   }
   Write-PetStatus
 })
+
+$rateTimer = New-Object System.Windows.Forms.Timer
+$rateTimer.Interval = 1000
+$rateTimer.Add_Tick({ Update-FastUsageStats })
 
 $taskTimer = New-Object System.Windows.Forms.Timer
 $taskTimer.Interval = 2000
@@ -1423,12 +1448,13 @@ $form.Add_Shown({
   $animTimer.Start()
   $balanceTimer.Start()
   $statsTimer.Start()
+  $rateTimer.Start()
   $taskTimer.Start()
   if (-not $DisableWatchdog) { $watchdogTimer.Start() }
 })
 
 $form.Add_FormClosed({
-  $animTimer.Stop(); $balanceTimer.Stop(); $statsTimer.Stop(); $watchdogTimer.Stop(); $taskTimer.Stop()
+  $animTimer.Stop(); $balanceTimer.Stop(); $statsTimer.Stop(); $rateTimer.Stop(); $watchdogTimer.Stop(); $taskTimer.Stop()
   if ($script:AccountWorker) {
     try { $script:AccountWorker.Stop(); $script:AccountWorker.Dispose() } catch { }
   }

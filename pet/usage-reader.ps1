@@ -6,7 +6,7 @@ function Initialize-UsageReader {
   $defaults = @{
     File = $null; Offset = [long]0; Carry = ''; Requests = [long]0
     Input = [long]0; Cached = [long]0; Output = [long]0; Reasoning = [long]0; Recent = @()
-    LastTotal = $null
+    LastTotal = $null; CaughtUp = $false
     SeenEvents = (New-Object 'System.Collections.Generic.HashSet[string]')
     Utf8Decoder = ([System.Text.Encoding]::UTF8.GetDecoder())
     MetaCache = @{}
@@ -28,6 +28,7 @@ function Reset-UsageReader {
   $script:Usage.Reasoning = [long]0
   $script:Usage.Recent = @()
   $script:Usage.LastTotal = $null
+  $script:Usage.CaughtUp = $false
   $script:Usage.SeenEvents = New-Object 'System.Collections.Generic.HashSet[string]'
   $script:Usage.Utf8Decoder = [System.Text.Encoding]::UTF8.GetDecoder()
 }
@@ -168,20 +169,32 @@ function Read-UsageEvent {
 # Incremental bytes plus a UTF-8 decoder keep a split line or multibyte character
 # until its next write. Repeated polling does not recount the already read bytes.
 function Update-UsageStats {
+  param([switch]$SelectedFileOnly)
   Initialize-UsageReader
-  $file = Get-NewestRolloutFile
+  $file = if ($SelectedFileOnly) { $script:Usage.File } else { Get-NewestRolloutFile }
   if (-not $file) { return }
+  if ($SelectedFileOnly) {
+    # The one-second path never scans directories or accelerates history replay.
+    if (-not $script:Usage.CaughtUp) { return }
+    try {
+      $info = Get-Item -LiteralPath $file -ErrorAction Stop
+      if ($info.Length -eq $script:Usage.Offset) { return }
+    } catch { return }
+  }
   if ($script:Usage.File -ne $file) { Reset-UsageReader -File $file }
   $chunk = ''; $stream = $null
   try {
     $stream = [System.IO.File]::Open($file, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
     if ($stream.Length -lt $script:Usage.Offset) { Reset-UsageReader -File $file }
     [void]$stream.Seek($script:Usage.Offset, [System.IO.SeekOrigin]::Begin)
-    $count = [int][Math]::Min([long]4194304, $stream.Length - $script:Usage.Offset)
+    $limit = if ($SelectedFileOnly) { 262144 } else { 4194304 }
+    $count = [int][Math]::Min([long]$limit, $stream.Length - $script:Usage.Offset)
+    $script:Usage.CaughtUp = $stream.Length -eq $script:Usage.Offset
     if ($count -le 0) { return }
     $bytes = New-Object byte[] $count
     $read = $stream.Read($bytes, 0, $count)
     $script:Usage.Offset = $stream.Position
+    $script:Usage.CaughtUp = $stream.Position -ge $stream.Length
     $chars = New-Object char[] ([System.Text.Encoding]::UTF8.GetMaxCharCount($read))
     $decoded = $script:Usage.Utf8Decoder.GetChars($bytes, 0, $read, $chars, 0, $false)
     $chunk = New-Object string($chars, 0, $decoded)
