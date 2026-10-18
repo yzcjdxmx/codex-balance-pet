@@ -360,7 +360,7 @@ if ($script:LookFiles.Count -eq 0) {
 }
 
 # 表情真图：有就换脸，没有就用当前形象 + 程序化特效
-foreach ($name in 'happy', 'sad', 'sleepy') {
+foreach ($name in 'happy', 'sad', 'sleepy', 'greeting', 'relaxed', 'hungry', 'request') {
   $file = Join-Path $script:AssetDir ("pet-$name.png")
   if (Test-Path -LiteralPath $file) { $script:Sprites[$name] = Import-Bitmap -Path $file }
 }
@@ -726,6 +726,11 @@ function New-PetFrame {
       [float]([int][Math]::Floor($index / 2) * $script:WorkingCellH),
       [float]$script:WorkingCellW, [float]$script:WorkingCellH)
     $g.DrawImage($sprite, $dest, $src, [System.Drawing.GraphicsUnit]::Pixel)
+  } elseif ($Expression -eq 'sleepy') {
+    # Breathe around a fixed baseline, using the same 25-frame clock as Zzz.
+    $breath = [single](1.5 * (1 + [Math]::Sin(2 * [Math]::PI * $SleepAnimationFrame / 25)))
+    $dest = [System.Drawing.RectangleF]::new($script:SpriteX, ($script:SpriteY + $Bob - $breath), $script:SpriteW, ($script:SpriteH + $breath))
+    $g.DrawImage($sprite, $dest)
   } else {
     $g.DrawImage($sprite, $script:SpriteX, ($script:SpriteY + $Bob), $script:SpriteW, $script:SpriteH)
   }
@@ -844,7 +849,11 @@ if ($Preview) {
     @{ Name = 'idle';    Args = @{ Expression = 'normal'; BalanceText = '¥8.47'; StatusColor = 'Ok'; Bob = 0 } },
     @{ Name = 'blink';   Args = @{ Expression = 'blink'; BalanceText = '¥8.47'; StatusColor = 'Ok'; Bob = 0 } },
     @{ Name = 'talking'; Args = @{ Expression = 'happy'; Bubble = '余额还有 ¥8.47 哦～'; BalanceText = '¥8.47'; StatusColor = 'Ok'; Bob = -3 } },
-    @{ Name = 'low';     Args = @{ Expression = 'sad'; Bubble = '余额只剩 ¥4.20 啦…'; BalanceText = '¥4.20'; StatusColor = 'Low'; Bob = 0 } },
+    @{ Name = 'greeting'; Args = @{ Expression = 'greeting'; Bubble = '摸摸头，继续陪你～'; BalanceText = '额度 5h 83%｜周 97%'; StatusColor = 'Ok'; Bob = 0 } },
+    @{ Name = 'relaxed'; Args = @{ Expression = 'relaxed'; BalanceText = '额度 5h 83%｜周 97%'; StatusColor = 'Ok'; Bob = 0 } },
+    @{ Name = 'hungry'; Args = @{ Expression = 'hungry'; Bubble = '余额不多啦～'; BalanceText = '¥4.20'; StatusColor = 'Low'; Bob = 0 } },
+    @{ Name = 'request'; Args = @{ Expression = 'request'; Bubble = '额度用完啦，休息一下吧～'; BalanceText = '额度 5h 0%｜周 97%'; StatusColor = 'Low'; Bob = 0 } },
+    @{ Name = 'low';     Args = @{ Expression = 'hungry'; Bubble = '余额只剩 ¥4.20 啦…'; BalanceText = '¥4.20'; StatusColor = 'Low'; Bob = 0 } },
     @{ Name = 'sleepy';  Args = @{ Expression = 'sleepy'; BalanceText = '¥8.47'; StatusColor = 'Ok'; Bob = 2 } },
     @{ Name = 'sleepy-8'; Args = @{ Expression = 'sleepy'; SleepAnimationFrame = 8; BalanceText = '¥8.47'; StatusColor = 'Ok'; Bob = 2 } },
     @{ Name = 'sleepy-16'; Args = @{ Expression = 'sleepy'; SleepAnimationFrame = 16; BalanceText = '¥8.47'; StatusColor = 'Ok'; Bob = 2 } },
@@ -943,7 +952,16 @@ function Get-RenderedBubble {
 }
 
 function Get-RenderedExpression {
+  param([datetime]$Now = (Get-Date))
   if ($script:State.TaskBusy -and $script:WorkingAtlas) { return 'working' }
+  if ($script:State.Expression -eq 'sad' -and $script:State.LowBalance -and -not $script:State.LastError) {
+    if ($script:State.AccountKind -eq 'quota' -and $script:Sprites.ContainsKey('request')) { return 'request' }
+    if ($script:Sprites.ContainsKey('hungry')) { return 'hungry' }
+  }
+  if ($script:State.Expression -in @('normal', 'blink') -and -not $script:State.LowBalance -and
+      ($Now - $script:State.LastInteraction).TotalSeconds -ge 45 -and $script:Sprites.ContainsKey('relaxed')) {
+    return 'relaxed'
+  }
   return $script:State.Expression
 }
 
@@ -1271,7 +1289,7 @@ $form.Add_MouseUp({
   } else {
     # 单击：刷新一次 + 说句话
     Update-Balance
-    Show-Bubble -Text (Get-TalkLine) -Seconds 4 -Expression $(if ($script:State.LowBalance) { 'sad' } else { 'happy' })
+    Show-Bubble -Text (Get-TalkLine) -Seconds 4 -Expression $(if ($script:State.LowBalance) { 'sad' } else { 'greeting' })
     Sync-Frame
   }
 })
@@ -1371,7 +1389,7 @@ $animTimer.Add_Tick({
   if ($state.Bubble -and $now -gt $state.BubbleUntil) { $state.Bubble = '' }
 
   # 表情到期回落
-  if ($state.Expression -in @('happy', 'sad', 'blink') -and $now -gt $state.ExpressionUntil -and $now -gt $state.BlinkUntil) {
+  if ($state.Expression -in @('happy', 'greeting', 'sad', 'blink') -and $now -gt $state.ExpressionUntil -and $now -gt $state.BlinkUntil) {
     if ($state.LowBalance) { $state.Expression = 'sad' } else { $state.Expression = 'normal' }
   }
 

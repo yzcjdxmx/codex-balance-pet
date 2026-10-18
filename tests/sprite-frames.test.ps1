@@ -12,7 +12,7 @@ $petSource = Join-Path $ProjectRoot 'pet\balance-pet.ps1'
 $parseTokens = $null; $parseErrors = $null
 $petAst = [Management.Automation.Language.Parser]::ParseFile($petSource, [ref]$parseTokens, [ref]$parseErrors)
 Assert-Sprite ($parseErrors.Count -eq 0) 'The desktop pet has syntax errors.'
-foreach ($name in @('Import-Bitmap', 'Set-Look')) {
+foreach ($name in @('Import-Bitmap', 'Set-Look', 'Get-RenderedExpression')) {
   $definition = $petAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name }.GetNewClosure(), $true)
   Assert-Sprite ($null -ne $definition) ('Missing function: ' + $name)
   . ([scriptblock]::Create($definition.Extent.Text))
@@ -66,9 +66,30 @@ try {
   Assert-Sprite (Set-Look -File $script:LookFiles[1]) 'Per-appearance frames did not reload.'
   Assert-Sprite ($script:Sprites.ContainsKey('normal') -and $script:Sprites.ContainsKey('blink')) 'Per-appearance frames were ignored.'
   Assert-Sprite (Set-Look -File $script:LookFiles[0]) 'Returning to the default appearance failed.'
+  $now = Get-Date
+  $script:Sprites['relaxed'] = [Drawing.Bitmap]::new(1, 1)
+  $script:Sprites['hungry'] = [Drawing.Bitmap]::new(1, 1)
+  $script:Sprites['request'] = [Drawing.Bitmap]::new(1, 1)
+  $script:WorkingAtlas = [Drawing.Bitmap]::new(1, 1)
+  $script:State = @{ TaskBusy = $false; Expression = 'normal'; LowBalance = $false; LastError = $null; AccountKind = 'quota'; LastInteraction = $now }
+  Assert-Sprite ((Get-RenderedExpression -Now $now) -eq 'normal') 'A recent interaction should keep the selected appearance.'
+  $script:State.LastInteraction = $now.AddSeconds(-45)
+  Assert-Sprite ((Get-RenderedExpression -Now $now) -eq 'relaxed') 'Idle time should select the teacup sprite.'
+  $script:State.Expression = 'greeting'
+  Assert-Sprite ((Get-RenderedExpression -Now $now) -eq 'greeting') 'An interaction should override the idle appearance.'
+  $script:State.Expression = 'sad'; $script:State.LowBalance = $true
+  Assert-Sprite ((Get-RenderedExpression -Now $now) -eq 'request') 'Exhausted quota should select the empty-bowl sprite.'
+  $script:State.AccountKind = 'balance'
+  Assert-Sprite ((Get-RenderedExpression -Now $now) -eq 'hungry') 'Low API balance should select the hungry sprite.'
+  $script:State.LastError = 'fixture error'
+  Assert-Sprite ((Get-RenderedExpression -Now $now) -eq 'sad') 'A query error must not be presented as low balance.'
+  $script:State.Expression = 'sleepy'; $script:State.TaskBusy = $true
+  Assert-Sprite ((Get-RenderedExpression -Now $now) -eq 'working') 'An active task must take priority over sleep and balance poses.'
   'PASS: real transparent eye frames, silhouette alignment, appearance-specific loading and no animation frames in the look menu.'
+  'PASS: interaction, idle and account-state artwork mapping; query failures and active tasks retain priority.'
 } finally {
   foreach ($sprite in $script:Sprites.Values) { $sprite.Dispose() }
+  if ($script:WorkingAtlas) { $script:WorkingAtlas.Dispose() }
   foreach ($file in $fixtureFiles) { if (Test-Path -LiteralPath $file) { Remove-Item -LiteralPath $file } }
   Remove-Item -LiteralPath $fixture
 }

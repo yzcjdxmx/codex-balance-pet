@@ -1,22 +1,24 @@
 ﻿# 余额桌宠 · Codex Balance Pet
 
-一只蹲在 Windows 桌面上的 DeepSeek 鲸鱼女仆。脚下的牌子跟着**当前模型服务商**显示账户余额或 Codex 额度，能拖动、会说话、会眨眼；跑任务时奋笔疾书，闲置久了会蜷起来打盹，13 个形象随手切换。
+一只蹲在 Windows 桌面上的 DeepSeek 鲸鱼女仆。脚下的牌子跟着**当前模型服务商**显示账户余额或 Codex 额度，能拖动、会说话、会眨眼；跑任务时奋笔疾书，闲置久了会蜷起来打盹，19 个形象随手切换。
 
 它同时是一个 **Codex 插件**：在对话里问「余额多少」，AI 就能查到实时数据；Codex 一启动，桌宠自己就被拉起来了。
 
-<p>
-  <img src="docs/preview/quota.png" width="170" alt="官方额度模式">
-  <img src="docs/preview/idle.png" width="170" alt="API 余额 + 心情">
-  <img src="docs/preview/talking.png" width="170" alt="点击冒一句台词">
-  <img src="docs/preview/blink.png" width="170" alt="真实闭眼帧">
-</p>
+下载：[最新 Release 安装包](https://github.com/yzcjdxmx/codex-balance-pet/releases/latest)。
+
+**日常互动与额度状态**
 
 <p>
-  <img src="docs/preview/working.gif" width="170" alt="跑任务时的四帧写字动画">
-  <img src="docs/preview/low.png" width="170" alt="余额低于阈值变橙点 + 难过脸">
-  <img src="docs/preview/stats.png" width="170" alt="用量行">
-  <img src="docs/preview/error.png" width="170" alt="查询失败">
+  <img src="docs/preview/character-states.png" width="760" alt="六种不同状态：摸头互动、抱鲸打招呼、杯中鲸闲置、低余额讨饭、额度耗尽伸手，以及躺睡与 Zzz">
 </p>
+
+**任务进行中：奋笔疾书**
+
+<p>
+  <img src="docs/preview/working.gif" width="220" alt="任务执行时循环播放四帧写字动画，结束后恢复日常状态">
+</p>
+
+[查看全部 19 个形象、素材修复和状态对应关系](docs/artwork.md)。
 
 > PowerShell 负责 Windows 透明窗口与动画，Node 负责账户查询和只读任务状态查询。无需编译、无 Electron。
 
@@ -30,9 +32,9 @@
 - **拖动 & 记忆**：按住角色任意位置拖走，位置写进 `pet-state.json`，重启回到原处
 - **不抢焦点**：默认开启，点击和拖动时保留当前窗口的输入焦点；右键「不抢焦点」可关闭，选择会被记住
 - **始终置顶**：默认开启；右键取消勾选「始终置顶」后，桌宠可被游戏或其他窗口盖住，再次勾选恢复置顶，选择会被记住。切换时无需重启，也不会增加后台轮询
-- **点击**：冒一句台词 + 换表情 + 立刻查一次余额
-- **13 个形象轮换**：右键「换个形象」按文件名顺序切换，选择会被记住
-- **表情**：开心（点赞）、难过（担心脸）、打盹（蜷着睡）有独立素材；余额低于阈值自动切难过；闲置超过阈值自动打盹，头顶的 `Zzz` 缓缓上浮、变大并淡出，约 3 秒循环（任务进行中不睡，写字动画优先）
+- **点击**：冒一句台词 + 摸头表情 + 立刻查一次余额；右键「打个招呼」时显示抱鲸表情
+- **19 个形象轮换**：右键「换个形象」按文件名顺序切换，选择会被记住；新增六张素材也能手动选择
+- **状态素材**：闲置 45 秒显示杯中鲸，闲置超过打盹阈值后切到躺睡姿势，配合轻微呼吸和上浮淡出的 `Zzz`。API 余额偏低时显示举碗讨饭，官方额度耗尽时显示空碗伸手；查询失败显示担心脸。任务进行中仍优先写字。素材来源、修复范围和提示词见 [素材说明](docs/artwork.md)
 - **右键菜单**：立即刷新余额 / 账户余额或额度详情（含北京时间重置时间）/ 用量详情 / 打个招呼 / 换个形象 / 始终置顶 / 不抢焦点 / 回到右下角 / 退出
 - **不吃鼠标**：透明区域不挡点击，能直接点到下面的窗口
 - **随 Codex 启停**：Codex 启动时插件把桌宠无窗口拉起；Codex 进程消失 15 秒后自动关闭；同时只允许一个实例
@@ -128,16 +130,18 @@ codex-balance-pet\
 
 ## 🎨 换形象 / 加形象
 
-形象就是 `pet\assets\` 里的 PNG，**加形象不用改代码**——把处理好的图命名成 `pet-look-13.png` 丢进去，重启就会出现在轮换里。
+形象就是 `pet\assets\` 里的 PNG，**加形象不用改代码**——把处理好的图命名成 `pet-look-19.png` 丢进去，重启就会出现在轮换里。
 
 | 文件名 | 作用 |
 |---|---|
 | `pet-base.png` | 默认形象 |
-| `pet-look-01.png` … `pet-look-12.png` | 可轮换形象，右键「换个形象」按文件名顺序切换 |
-| `pet-happy.png` / `pet-sad.png` / `pet-sleepy.png` | 对应心情用真图换脸 |
+| `pet-look-01.png` … `pet-look-18.png` | 可轮换形象，右键「换个形象」按文件名顺序切换 |
+| `pet-happy.png` / `pet-greeting.png` / `pet-relaxed.png` | 抱鲸打招呼 / 摸头互动 / 闲置杯中鲸 |
+| `pet-sad.png` / `pet-hungry.png` / `pet-request.png` | 查询失败 / API 余额偏低 / 官方额度耗尽 |
+| `pet-sleepy.png` | 躺睡图；绘制时轻微呼吸，保留 `Zzz` 特效 |
 | `pet-working-atlas-v1.png` | 透明背景的 2×2 四帧写字图集，按行从左到右播放 |
 | `pet-normal.png` / `pet-blink.png` | 默认形象的配套睁眼 / 闭眼帧，眨眼直接切图，不再压扁身体 |
-| `pet-look-13-normal.png` / `pet-look-13-blink.png`（可选） | 自定义形象的配套表情帧，不作为独立形象参与轮换；缺少闭眼帧时保留当前形象 |
+| `pet-look-19-normal.png` / `pet-look-19-blink.png`（可选） | 自定义形象的配套表情帧，不作为独立形象参与轮换；缺少闭眼帧时保留当前形象 |
 
 从网上下到的表情包变成可用立绘：
 
