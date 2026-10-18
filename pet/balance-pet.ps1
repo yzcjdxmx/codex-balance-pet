@@ -908,6 +908,7 @@ $script:State = @{
   BobPhase        = 0.0
   StatsText       = ''
   ShowStats       = $true
+  TopMost         = $true
   NoActivate      = $true
   LastSignature   = ''
   Frame           = $null
@@ -996,6 +997,7 @@ function Write-PetStatus {
       queried_at  = $script:State.QueriedAt
       refreshing  = [bool]$script:State.IsRefreshing
       show_stats  = [bool]$script:State.ShowStats
+      topmost     = [bool]$script:State.TopMost
       no_activate = [bool]$script:State.NoActivate
       stats_text  = $script:State.StatsText
       token_requests = $script:Usage.Requests
@@ -1160,6 +1162,7 @@ function Save-PetPosition {
       y         = $script:BaseY
       look      = if ($script:LookFiles.Count -gt 0) { $script:LookFiles[$script:LookIndex] } else { $null }
       stats     = [bool]$script:State.ShowStats
+      topMost   = [bool]$script:State.TopMost
       noActivate = [bool]$script:State.NoActivate
       updatedAt = (Get-Date).ToString('s')
     } | ConvertTo-Json | Set-Content -LiteralPath $script:StateFile -Encoding utf8
@@ -1172,8 +1175,9 @@ function Get-SavedState {
       $saved = Get-Content -LiteralPath $script:StateFile -Raw | ConvertFrom-Json
       if ($null -ne $saved.x -and $null -ne $saved.y) {
         $showSavedStats = if ($null -ne $saved.stats) { [bool]$saved.stats } else { $true }
+        $savedTopMost = if ($saved.topMost -is [bool]) { $saved.topMost } else { $true }
         $savedNoActivate = if ($saved.noActivate -is [bool]) { $saved.noActivate } else { $true }
-        return @{ X = [int]$saved.x; Y = [int]$saved.y; Look = $saved.look; Stats = $showSavedStats; NoActivate = $savedNoActivate }
+        return @{ X = [int]$saved.x; Y = [int]$saved.y; Look = $saved.look; Stats = $showSavedStats; TopMost = $savedTopMost; NoActivate = $savedNoActivate }
       }
     }
   } catch { }
@@ -1193,7 +1197,6 @@ $form = New-Object BalancePetForm
 $form.Text = '余额桌宠'
 $form.FormBorderStyle = 'None'
 $form.StartPosition = 'Manual'
-$form.TopMost = $true
 $form.ShowInTaskbar = $false
 $form.MinimizeBox = $false
 $form.MaximizeBox = $false
@@ -1206,6 +1209,7 @@ $saved = Get-SavedState
 if ($saved) {
   if ($saved.Look) { $null = Set-Look -File $saved.Look }
   $script:State.ShowStats = [bool]$saved.Stats
+  $script:State.TopMost = [bool]$saved.TopMost
   $script:State.NoActivate = [bool]$saved.NoActivate
   $script:BaseX = $saved.X
   $script:BaseY = $saved.Y
@@ -1213,6 +1217,7 @@ if ($saved) {
   $script:BaseX = $workArea.Right - $script:CanvasW - 40
   $script:BaseY = $workArea.Bottom - $script:CanvasH - 40
 }
+$form.TopMost = [bool]$script:State.TopMost
 $form.NoActivate = [bool]$script:State.NoActivate
 $form.Location = New-Object System.Drawing.Point($script:BaseX, $script:BaseY)
 
@@ -1279,6 +1284,9 @@ $itemLook = $menu.Items.Add(('换个形象（共 {0} 个）' -f [Math]::Max(1, $
 $itemStats = $menu.Items.Add('显示用量信息')
 $itemStats.CheckOnClick = $true
 $itemStats.Checked = [bool]$script:State.ShowStats
+$itemTopMost = $menu.Items.Add('始终置顶')
+$itemTopMost.CheckOnClick = $true
+$itemTopMost.Checked = [bool]$script:State.TopMost
 $itemNoActivate = $menu.Items.Add('不抢焦点')
 $itemNoActivate.CheckOnClick = $true
 $itemNoActivate.Checked = [bool]$script:State.NoActivate
@@ -1328,6 +1336,12 @@ $itemUsage.Add_Click({
   Update-UsageStats
   Show-Bubble -Text (Get-UsageDetail) -Seconds 12
   Sync-Frame -Force
+})
+$itemTopMost.Add_Click({
+  $script:Form.TopMost = [bool]$itemTopMost.Checked
+  $script:State.TopMost = [bool]$itemTopMost.Checked
+  Save-PetPosition
+  Write-PetStatus
 })
 $itemNoActivate.Add_Click({
   $script:Form.NoActivate = [bool]$itemNoActivate.Checked

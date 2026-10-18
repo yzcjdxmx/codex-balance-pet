@@ -35,21 +35,27 @@ $script:StateFile = Join-Path $interactionTestDirectory 'pet-state.json'
 [System.IO.File]::WriteAllText($script:StateFile, '{"x":17,"y":23,"look":"fixture","stats":false}')
 $legacyState = Get-SavedState
 Assert-InteractionTest ($legacyState.NoActivate -eq $true) 'Legacy state should default to no activation.'
+Assert-InteractionTest ($legacyState.TopMost -eq $true) 'Legacy state should default to topmost.'
 Assert-InteractionTest ($legacyState.X -eq 17 -and $legacyState.Y -eq 23 -and -not $legacyState.Stats) 'Legacy state fields changed.'
 [System.IO.File]::WriteAllText($script:StateFile, '{"x":17,"y":23,"noActivate":"false"}')
 Assert-InteractionTest ((Get-SavedState).NoActivate -eq $true) 'Malformed activation preference should use the safe default.'
+[System.IO.File]::WriteAllText($script:StateFile, '{"x":17,"y":23,"topMost":"false"}')
+Assert-InteractionTest ((Get-SavedState).TopMost -eq $true) 'Malformed topmost preference should use the default.'
 $script:BaseX = 37
 $script:BaseY = 41
 $script:LookFiles = @('fixture')
 $script:LookIndex = 0
-$script:State = @{ ShowStats = $true; NoActivate = $false }
+$script:State = @{ ShowStats = $true; TopMost = $false; NoActivate = $false }
 Save-PetPosition
 $disabledState = Get-SavedState
 Assert-InteractionTest (-not $disabledState.NoActivate) 'A disabled preference did not survive saving.'
+Assert-InteractionTest (-not $disabledState.TopMost) 'Disabled topmost did not survive saving.'
 Assert-InteractionTest ($disabledState.X -eq 37 -and $disabledState.Y -eq 41 -and $disabledState.Look -ceq 'fixture' -and $disabledState.Stats) 'Saving the preference changed position, look or stats.'
 $script:State.NoActivate = $true
+$script:State.TopMost = $true
 Save-PetPosition
 Assert-InteractionTest ((Get-SavedState).NoActivate) 'An enabled preference did not survive saving.'
+Assert-InteractionTest ((Get-SavedState).TopMost) 'Enabled topmost did not survive saving.'
 
 $interactionTestNativeCode = @'
 using System;
@@ -175,4 +181,4 @@ try {
   $interactionTestEditor.Dispose()
 }
 
-Write-Host 'PASS: legacy state and saved focus preference; actual WinForms startup, clicks, drag capture, right-click menu selection, preserved native styles and restored activation.'
+Write-Host 'PASS: legacy state and saved topmost/focus preferences; actual WinForms startup, clicks, drag capture, right-click menu selection, preserved native styles and restored activation.'
