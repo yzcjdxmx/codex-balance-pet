@@ -20,4 +20,5 @@ description: "查询当前模型服务商的实时账户余额或官方 ChatGPT 
 4. 调用失败时转达工具返回的安全错误摘要。API 账号检查网络、当前 provider 的 `base_url`、`env_key` 或凭据；官方账号检查 Codex 登录状态和原生程序是否可用。不要输出密钥、token、账号邮箱或远端错误正文。
 5. 用户希望"一直盯着"余额时，建议创建定时任务周期性调用 `get_balance`，仅在低于阈值或查询失败时提醒；创建定时任务前先征得用户同意。
 6. 未显式配置 `model_provider` 时使用官方 OpenAI 服务商，忽略残留 custom 段。DeepSeek API 使用 `/user/balance`；其他 API 服务商需显式配置 `BALANCE_URL` 指向实际兼容的余额接口，不将任何平台的凭据自动发送给 DeepSeek。
+   自定义服务商名称（例如 `openai_http`）指向官方 `https://chatgpt.com/backend-api/codex`、设置 `requires_openai_auth = true` 且当前为 ChatGPT 登录时，也使用官方额度查询；不能仅凭服务商名称或认证标记把第三方地址视为官方账号。
 7. 金额提醒阈值只适用于 API 余额，不套用到官方额度百分比。切换服务商后不能把上一服务商的数据当作当前结果。

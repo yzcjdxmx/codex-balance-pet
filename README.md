@@ -118,6 +118,7 @@ codex-balance-pet\
 | 其他 API 平台 | 需要显式设 `BALANCE_URL` 指向兼容的余额接口 | 该接口返回的金额 |
 
 - 没有显式配置 `model_provider` 时按官方 OpenAI 处理，不会误选残留的 `custom` 段
+- 自定义名称（如 `openai_http`）指向官方 `https://chatgpt.com/backend-api/codex`，且启用 `requires_openai_auth = true`、当前以 ChatGPT 登录时，同样读取官方额度，无需配置金额余额接口；第三方地址不会仅凭名称被认作官方账号
 - 凭据只在 Node 进程里读，脚本之间不互相传；启动器里连 stderr 都不回显，避免第三方报错带出密钥
 - 已设置的低余额阈值只对**同一币种**的金额生效，不会套到官方额度百分比上
 - 官方额度百分比**不会**写进金额日志，避免把两种口径混在一起
