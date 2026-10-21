@@ -46,6 +46,13 @@ function readAuth(home) {
   try { return JSON.parse(readText(path.join(home, "auth.json"))); } catch { return {}; }
 }
 
+function readBalanceSource(home) {
+  try {
+    const setting = JSON.parse(readText(path.join(home, "balance-source.json")));
+    return setting?.source === "chatgpt" ? "chatgpt" : "";
+  } catch { return ""; }
+}
+
 // Only root assignments select a provider. Values inside an unrelated table
 // cannot activate a stale provider or supply its credentials.
 function parseConfig(text) {
@@ -105,8 +112,9 @@ export function resolveAccount(options = {}) {
   const provider = explicit ? parsed.root.model_provider : "openai";
   const model = typeof parsed.root.model === "string" ? parsed.root.model : "";
   const section = explicit ? parsed.sections.get(provider) || {} : {};
+  const balanceSource = options.balanceSource || (home ? readBalanceSource(home) : "");
   const official = provider === "openai" || isOfficialChatGPTAlias(section);
-  const chatgpt = official && auth?.auth_mode === "chatgpt";
+  const chatgpt = (official || balanceSource === "chatgpt") && auth?.auth_mode === "chatgpt";
   const endpoint = chatgpt ? "https://chatgpt.com" : safeEndpoint(section.base_url || (official ? "https://api.openai.com/v1" : ""));
   const account = { kind: chatgpt ? "quota" : "balance", provider, model, endpoint, home, key: "", balanceUrl: "", errorCode: null };
   if (parsed.root.invalid || ("model_provider" in parsed.root && (!explicit || typeof parsed.root.model_provider !== "string")) || ("model" in parsed.root && typeof parsed.root.model !== "string")) account.errorCode = "CONFIG_INVALID";

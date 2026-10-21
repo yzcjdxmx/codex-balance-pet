@@ -34,8 +34,9 @@
 - **始终置顶**：默认开启；右键取消勾选「始终置顶」后，桌宠可被游戏或其他窗口盖住，再次勾选恢复置顶，选择会被记住。切换时无需重启，也不会增加后台轮询
 - **点击**：冒一句台词 + 摸头表情 + 立刻查一次余额；右键「打个招呼」时显示抱鲸表情
 - **19 个形象轮换**：右键「换个形象」按文件名顺序切换，选择会被记住；新增六张素材也能手动选择
+- **缩放大小**：右键「缩放大小」可在 60%–130% 之间切换，默认 75%；选择会被记住
 - **状态素材**：闲置 45 秒显示杯中鲸，闲置超过打盹阈值后切到躺睡姿势，配合轻微呼吸和上浮淡出的 `Zzz`。API 余额偏低时显示举碗讨饭，官方额度耗尽时显示空碗伸手；查询失败显示担心脸。任务进行中仍优先写字。素材来源、修复范围和提示词见 [素材说明](docs/artwork.md)
-- **右键菜单**：立即刷新余额 / 账户余额或额度详情（含北京时间重置时间）/ 用量详情 / 打个招呼 / 换个形象 / 始终置顶 / 不抢焦点 / 回到右下角 / 退出
+- **右键菜单**：立即刷新余额 / 账户余额或额度详情（含北京时间重置时间）/ 用量详情 / 打个招呼 / 换个形象 / 缩放大小 / 始终置顶 / 不抢焦点 / 回到右下角 / 退出
 - **不吃鼠标**：透明区域不挡点击，能直接点到下面的窗口
 - **随 Codex 启停**：Codex 启动时插件把桌宠无窗口拉起；Codex 进程消失 15 秒后自动关闭；同时只允许一个实例
 - **余额记录**：默认每 30 分钟把金额余额追加一行到 `pet\data\balance-log.csv`（正常退出时补一行），配合 `tools\余额报告.ps1` 生成消耗表格 + 曲线图
@@ -122,6 +123,7 @@ codex-balance-pet\
 
 - 没有显式配置 `model_provider` 时按官方 OpenAI 处理，不会误选残留的 `custom` 段
 - 自定义名称（如 `openai_http`）指向官方 `https://chatgpt.com/backend-api/codex`，且启用 `requires_openai_auth = true`、当前以 ChatGPT 登录时，同样读取官方额度，无需配置金额余额接口；第三方地址不会仅凭名称被认作官方账号
+- 如果模型路由使用自定义服务商、但当前登录仍是官方 ChatGPT，可在 Codex Home 下创建 `balance-source.json` 并写入 `{"source":"chatgpt"}`。此显式设置只选择额度来源；仅在 ChatGPT 登录模式下生效，不会更改模型路由
 - 凭据只在 Node 进程里读，脚本之间不互相传；启动器里连 stderr 都不回显，避免第三方报错带出密钥
 - 已设置的低余额阈值只对**同一币种**的金额生效，不会套到官方额度百分比上
 - 官方额度百分比**不会**写进金额日志，避免把两种口径混在一起
@@ -230,4 +232,4 @@ pwsh -NoProfile -File tools\install.ps1     # copies pet + plugin into %USERPROF
 # then enable the "balance" plugin from the local marketplace inside Codex
 ```
 
-Requires Windows 10/11, PowerShell 7, Node with `node:sqlite` support, and a logged-in Codex. The pet plays a four-frame writing animation while tasks run and dozes off after 150s idle (never while a task is running). Refreshing shows animated dots in a speech bubble while retaining the previous quota display. Artwork in `pet\assets\` is bundled from unofficial DeepSeek sticker packs and will be removed on request. Code is MIT licensed.
+Requires Windows 10/11, PowerShell 7, Node with `node:sqlite` support, and a logged-in Codex. The pet plays a four-frame writing animation while tasks run and dozes off after 150s idle (never while a task is running). Right-click to resize it from 60% to 130%; the choice is saved. Refreshing shows animated dots in a speech bubble while retaining the previous quota display. Artwork in `pet\assets\` is bundled from unofficial DeepSeek sticker packs and will be removed on request. Code is MIT licensed.
