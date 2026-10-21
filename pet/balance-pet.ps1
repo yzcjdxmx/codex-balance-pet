@@ -49,6 +49,8 @@ $script:BalanceLogFile = Join-Path $script:DataDir 'balance-log.csv'
 $script:SessionsDir = Join-Path $(if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $env:USERPROFILE '.codex' }) 'sessions'
 $script:CanvasW    = 340
 $script:CanvasH    = 562
+$script:Scale      = 0.75
+$script:ScaleChoices = @(0.60, 0.75, 0.90, 1.00, 1.15, 1.30)
 $script:SpriteW    = 320
 $script:SpriteH    = 400
 $script:SpriteX    = 10
@@ -837,6 +839,19 @@ function New-PetFrame {
   $badgeFormat.Dispose(); $statsFormat.Dispose()
   if ($ownsBadgeFont) { $badgeFont.Dispose() }
   $g.Dispose()
+  if ([Math]::Abs($script:Scale - 1.0) -gt 0.001) {
+    $scaledW = [Math]::Max(1, [int][Math]::Round($script:CanvasW * $script:Scale))
+    $scaledH = [Math]::Max(1, [int][Math]::Round($script:CanvasH * $script:Scale))
+    $scaledBitmap = New-Object System.Drawing.Bitmap($scaledW, $scaledH, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+    $scaledGraphics = [System.Drawing.Graphics]::FromImage($scaledBitmap)
+    $scaledGraphics.InterpolationMode = 'HighQualityBicubic'
+    $scaledGraphics.SmoothingMode = 'HighQuality'
+    $scaledGraphics.Clear([System.Drawing.Color]::Transparent)
+    $scaledGraphics.DrawImage($bitmap, (New-Object System.Drawing.Rectangle(0, 0, $scaledW, $scaledH)))
+    $scaledGraphics.Dispose()
+    $bitmap.Dispose()
+    return $scaledBitmap
+  }
   return $bitmap
 }
 
@@ -1017,6 +1032,7 @@ function Write-PetStatus {
       show_stats  = [bool]$script:State.ShowStats
       topmost     = [bool]$script:State.TopMost
       no_activate = [bool]$script:State.NoActivate
+      scale       = [double]$script:Scale
       stats_text  = $script:State.StatsText
       token_requests = $script:Usage.Requests
       token_output = $script:Usage.Output
@@ -1182,6 +1198,7 @@ function Save-PetPosition {
       stats     = [bool]$script:State.ShowStats
       topMost   = [bool]$script:State.TopMost
       noActivate = [bool]$script:State.NoActivate
+      scale     = [double]$script:Scale
       updatedAt = (Get-Date).ToString('s')
     } | ConvertTo-Json | Set-Content -LiteralPath $script:StateFile -Encoding utf8
   } catch { }
@@ -1195,11 +1212,39 @@ function Get-SavedState {
         $showSavedStats = if ($null -ne $saved.stats) { [bool]$saved.stats } else { $true }
         $savedTopMost = if ($saved.topMost -is [bool]) { $saved.topMost } else { $true }
         $savedNoActivate = if ($saved.noActivate -is [bool]) { $saved.noActivate } else { $true }
-        return @{ X = [int]$saved.x; Y = [int]$saved.y; Look = $saved.look; Stats = $showSavedStats; TopMost = $savedTopMost; NoActivate = $savedNoActivate }
+        $hasScale = $null -ne $saved.scale
+        $savedScale = 0.75
+        if ($hasScale) {
+          try { $savedScale = [Math]::Max(0.60, [Math]::Min(1.30, [double]$saved.scale)) } catch { $hasScale = $false }
+        }
+        return @{ X = [int]$saved.x; Y = [int]$saved.y; Look = $saved.look; Stats = $showSavedStats; TopMost = $savedTopMost; NoActivate = $savedNoActivate; Scale = $savedScale; HasScale = $hasScale }
       }
     }
   } catch { }
   return $null
+}
+
+function Set-PetScale {
+  param([double]$Scale)
+  if ($Scale -lt 0.60 -or $Scale -gt 1.30) { return }
+  if ([Math]::Abs($script:Scale - $Scale) -lt 0.001) { return }
+  $oldW = [int][Math]::Round($script:CanvasW * $script:Scale)
+  $oldH = [int][Math]::Round($script:CanvasH * $script:Scale)
+  $script:Scale = $Scale
+  $newW = [int][Math]::Round($script:CanvasW * $script:Scale)
+  $newH = [int][Math]::Round($script:CanvasH * $script:Scale)
+  $script:BaseX -= [int][Math]::Round(($newW - $oldW) / 2.0)
+  $script:BaseY -= [int][Math]::Round(($newH - $oldH) / 2.0)
+  $script:Form.ClientSize = New-Object System.Drawing.Size($newW, $newH)
+  $point = New-Object System.Drawing.Point($script:BaseX, $script:BaseY)
+  $area = [System.Windows.Forms.Screen]::FromPoint($point).WorkingArea
+  $script:BaseX = [Math]::Max($area.Left, [Math]::Min($script:BaseX, $area.Right - $newW))
+  $script:BaseY = [Math]::Max($area.Top, [Math]::Min($script:BaseY, $area.Bottom - $newH))
+  [PetLayer]::MoveTo($script:Form.Handle, $script:BaseX, ($script:BaseY + $script:Bob))
+  $script:State.LastSignature = ''
+  Save-PetPosition
+  Sync-Frame -Force
+  Write-PetStatus
 }
 
 #endregion
@@ -1218,12 +1263,15 @@ $form.StartPosition = 'Manual'
 $form.ShowInTaskbar = $false
 $form.MinimizeBox = $false
 $form.MaximizeBox = $false
-$form.ClientSize = New-Object System.Drawing.Size($script:CanvasW, $script:CanvasH)
+$saved = Get-SavedState
+if ($saved) { $script:Scale = [double]$saved.Scale }
+$form.ClientSize = New-Object System.Drawing.Size(
+  [int][Math]::Round($script:CanvasW * $script:Scale),
+  [int][Math]::Round($script:CanvasH * $script:Scale))
 $form.BackColor = [System.Drawing.Color]::Black
 $script:Form = $form
 
 $workArea = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
-$saved = Get-SavedState
 if ($saved) {
   if ($saved.Look) { $null = Set-Look -File $saved.Look }
   $script:State.ShowStats = [bool]$saved.Stats
@@ -1231,13 +1279,18 @@ if ($saved) {
   $script:State.NoActivate = [bool]$saved.NoActivate
   $script:BaseX = $saved.X
   $script:BaseY = $saved.Y
+  if (-not $saved.HasScale) {
+    $script:BaseX += [int][Math]::Round(($script:CanvasW - $form.ClientSize.Width) / 2.0)
+    $script:BaseY += [int][Math]::Round(($script:CanvasH - $form.ClientSize.Height) / 2.0)
+  }
 } else {
-  $script:BaseX = $workArea.Right - $script:CanvasW - 40
-  $script:BaseY = $workArea.Bottom - $script:CanvasH - 40
+  $script:BaseX = $workArea.Right - $form.ClientSize.Width - 40
+  $script:BaseY = $workArea.Bottom - $form.ClientSize.Height - 40
 }
 $form.TopMost = [bool]$script:State.TopMost
 $form.NoActivate = [bool]$script:State.NoActivate
 $form.Location = New-Object System.Drawing.Point($script:BaseX, $script:BaseY)
+if ($saved -and -not $saved.HasScale) { Save-PetPosition }
 
 # 拖动
 $script:Drag = @{ Active = $false; Offset = $null; Moved = $false }
@@ -1310,6 +1363,33 @@ $itemNoActivate.CheckOnClick = $true
 $itemNoActivate.Checked = [bool]$script:State.NoActivate
 $itemUsage = $menu.Items.Add('用量详情')
 $itemAccount = $menu.Items.Add('账户余额 / 额度详情')
+$itemScale = New-Object System.Windows.Forms.ToolStripMenuItem('缩放大小')
+$scaleMenuItems = @{}
+foreach ($scaleOption in $script:ScaleChoices) {
+  $scaleValue = [double]$scaleOption
+  $scalePercent = [int][Math]::Round($scaleValue * 100)
+  $scaleItem = New-Object System.Windows.Forms.ToolStripMenuItem(('{0}%' -f $scalePercent))
+  $scaleItem.Checked = [Math]::Abs($script:Scale - $scaleValue) -lt 0.001
+  $scaleMenuItems[[string]$scaleValue] = $scaleItem
+  [void]$itemScale.DropDownItems.Add($scaleItem)
+}
+$scaleItems = $scaleMenuItems
+foreach ($scaleOption in $script:ScaleChoices) {
+  $selectedScale = [double]$scaleOption
+  $selectedKey = [string]$selectedScale
+  $scaleMenuItems[$selectedKey].Add_Click({
+    Set-PetScale -Scale $selectedScale
+    foreach ($candidateScale in $scaleItems.Keys) {
+      $scaleItems[$candidateScale].Checked = $candidateScale -eq $selectedKey
+    }
+  }.GetNewClosure())
+}
+$itemScale.Add_DropDownOpening({
+  foreach ($scaleKey in $scaleItems.Keys) {
+    $scaleItems[$scaleKey].Checked = [Math]::Abs($script:Scale - [double]$scaleKey) -lt 0.001
+  }
+}.GetNewClosure())
+[void]$menu.Items.Add($itemScale)
 [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
 $itemReset = $menu.Items.Add('回到右下角')
 $itemExit = $menu.Items.Add('退出')
@@ -1369,8 +1449,8 @@ $itemNoActivate.Add_Click({
 })
 $itemReset.Add_Click({
   $area = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
-  $script:BaseX = $area.Right - $script:CanvasW - 40
-  $script:BaseY = $area.Bottom - $script:CanvasH - 40
+  $script:BaseX = $area.Right - $script:Form.ClientSize.Width - 40
+  $script:BaseY = $area.Bottom - $script:Form.ClientSize.Height - 40
   [PetLayer]::MoveTo($script:Form.Handle, $script:BaseX, $script:BaseY)
   Save-PetPosition
 })

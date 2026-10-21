@@ -22,3 +22,4 @@ description: "查询当前模型服务商的实时账户余额或官方 ChatGPT 
 6. 未显式配置 `model_provider` 时使用官方 OpenAI 服务商，忽略残留 custom 段。DeepSeek API 使用 `/user/balance`；其他 API 服务商需显式配置 `BALANCE_URL` 指向实际兼容的余额接口，不将任何平台的凭据自动发送给 DeepSeek。
    自定义服务商名称（例如 `openai_http`）指向官方 `https://chatgpt.com/backend-api/codex`、设置 `requires_openai_auth = true` 且当前为 ChatGPT 登录时，也使用官方额度查询；不能仅凭服务商名称或认证标记把第三方地址视为官方账号。
 7. 金额提醒阈值只适用于 API 余额，不套用到官方额度百分比。切换服务商后不能把上一服务商的数据当作当前结果。
+8. 用户明确选择官方 ChatGPT 额度、但模型路由使用代理别名时，可通过 Codex Home 下的 `balance-source.json` 指定 `{"source":"chatgpt"}`；仅在当前登录模式为 `chatgpt` 时生效，只影响余额查询，不改变模型路由。
