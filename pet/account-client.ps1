@@ -63,6 +63,23 @@ function Get-QuotaWindowLabel {
   return '额度'
 }
 
+function Get-QuotaResetText {
+  param([string]$Kind, [array]$Windows, [DateTimeOffset]$Now = [DateTimeOffset]::UtcNow)
+  if ($Kind -ne 'quota') { return '' }
+  $next = $Windows | Where-Object { $null -ne $_.ResetsAt } | Sort-Object ResetsAt | Select-Object -First 1
+  if (-not $next) { return '重置时间暂不可用' }
+  $seconds = [long]$next.ResetsAt - $Now.ToUnixTimeSeconds()
+  if ($seconds -le 0) { return ($next.Label + ' 已到重置时间，等待刷新') }
+  $minutes = [long][Math]::Ceiling($seconds / 60.0)
+  $days = [long][Math]::Floor($minutes / 1440.0)
+  $hours = [long][Math]::Floor(($minutes % 1440) / 60.0)
+  $parts = @()
+  if ($days -gt 0) { $parts += ($days.ToString() + 'd') }
+  if ($hours -gt 0 -or $days -gt 0) { $parts += ($hours.ToString() + 'h') }
+  $parts += (($minutes % 60).ToString() + 'm')
+  return ($next.Label + ' 重置还剩 ' + ($parts -join ' '))
+}
+
 function ConvertTo-AccountDisplay {
   param($Query, $Alert)
   if ($Query.error) { throw [string]$Query.error }
@@ -76,6 +93,7 @@ function ConvertTo-AccountDisplay {
     if (-not $limits) { $limits = $data.rateLimits }
     if (-not $limits) { throw '账户未返回可用额度' }
     $parts = @()
+    $resetWindows = @()
     $details = @('ChatGPT ' + [string]$limits.planType)
     $low = $false
     foreach ($window in @($limits.primary, $limits.secondary)) {
@@ -86,6 +104,7 @@ function ConvertTo-AccountDisplay {
       if ($remaining -le 0) { $low = $true }
       $reset = '重置时间未知'
       if ($null -ne $window.resetsAt) {
+        $resetWindows += [pscustomobject]@{ Label = $label; ResetsAt = [long]$window.resetsAt }
         $chinaZone = [TimeZoneInfo]::FindSystemTimeZoneById('China Standard Time')
         $resetAt = [DateTimeOffset]::FromUnixTimeSeconds([long]$window.resetsAt)
         $reset = [TimeZoneInfo]::ConvertTime($resetAt, $chinaZone).ToString('MM-dd HH:mm') + ' 重置'
@@ -98,6 +117,7 @@ function ConvertTo-AccountDisplay {
       Value = $null; Currency = $null; Provider = $Query.provider
       Source = $Query.source_id; Model = $Query.model; QueriedAt = $Query.queried_at
       Detail = ($details -join '；')
+      ResetWindows = $resetWindows
     }
   }
   if ($Query.kind -ne 'balance') { throw '当前服务商没有可查询的余额接口' }
@@ -118,5 +138,6 @@ function ConvertTo-AccountDisplay {
     Value = $value; Currency = $primary.currency; Provider = $Query.provider
     Source = $Query.source_id; Model = $Query.model; QueriedAt = $Query.queried_at
     Detail = ([string]$Query.provider + ' 余额 ' + $symbol + [string]$primary.total_balance)
+    ResetWindows = @()
   }
 }

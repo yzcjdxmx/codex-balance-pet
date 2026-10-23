@@ -48,7 +48,7 @@ $script:DataDir    = Join-Path $PSScriptRoot 'data'
 $script:BalanceLogFile = Join-Path $script:DataDir 'balance-log.csv'
 $script:SessionsDir = Join-Path $(if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $env:USERPROFILE '.codex' }) 'sessions'
 $script:CanvasW    = 340
-$script:CanvasH    = 562
+$script:CanvasH    = 594
 $script:SpriteW    = 320
 $script:SpriteH    = 400
 $script:SpriteX    = 10
@@ -792,6 +792,7 @@ function New-PetFrame {
     $badgeSize = $g.MeasureString($BalanceText, $badgeFont, 10000, $badgeFormat)
   }
   $showStats = [bool]($script:State.ShowStats -and $script:State.StatsText)
+  $resetText = [string]$script:State.ResetText
   $badgeW = $badgeSize.Width + 44
   $statsFormat = [System.Drawing.StringFormat]::GenericTypographic.Clone()
   $statsFormat.FormatFlags = $statsFormat.FormatFlags -bor [System.Drawing.StringFormatFlags]::NoWrap
@@ -801,11 +802,16 @@ function New-PetFrame {
     $statsSize = $g.MeasureString($script:State.StatsText, $script:FontStats, 10000, $statsFormat)
     $badgeW = [Math]::Max($badgeW, $statsSize.Width + 28)
   }
+  if ($resetText) {
+    $resetSize = $g.MeasureString($resetText, $script:FontStats, 10000, $statsFormat)
+    $badgeW = [Math]::Max($badgeW, $resetSize.Width + 28)
+  }
   $badgeW = [Math]::Round([Math]::Min($badgeW, $script:CanvasW - 10))
   $badgeLineH = [Math]::Ceiling($badgeFont.GetHeight($g)) + 6
   $statsLineH = [Math]::Ceiling($script:FontStats.GetHeight($g)) + 4
   $badgeH = $badgeLineH + 12
   if ($showStats) { $badgeH += $statsLineH + 2 }
+  if ($resetText) { $badgeH += $statsLineH + 2 }
   $badgeX = [Math]::Round(($script:CanvasW - $badgeW) / 2)
   $badgeY = [Math]::Min(498, $script:CanvasH - $badgeH - 6)
 
@@ -826,12 +832,20 @@ function New-PetFrame {
 
   if ($showStats) {
     $statsBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(242, 226, 233, 250))
+    $resetOffset = if ($resetText) { $statsLineH + 2 } else { 0 }
     $statsRect = New-Object System.Drawing.RectangleF(
-      [float][Math]::Round($badgeX + 6), [float][Math]::Round($badgeY + 6 + $badgeLineH + 2), [float][Math]::Round($badgeW - 12), [float]$statsLineH)
+      [float][Math]::Round($badgeX + 6), [float][Math]::Round($badgeY + 6 + $badgeLineH + 2 + $resetOffset), [float][Math]::Round($badgeW - 12), [float]$statsLineH)
     $g.DrawString($script:State.StatsText, $script:FontStats, $statsBrush, $statsRect, $statsFormat)
     $statsBrush.Dispose()
   }
 
+  if ($resetText) {
+    $resetBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(240, 180, 210, 245))
+    $resetRect = New-Object System.Drawing.RectangleF(
+      [float]($badgeX + 6), [float]($badgeY + 6 + $badgeLineH + 2), [float]($badgeW - 12), [float]$statsLineH)
+    $g.DrawString($resetText, $script:FontStats, $resetBrush, $resetRect, $statsFormat)
+    $resetBrush.Dispose()
+  }
   $dotBrush.Dispose(); $badgeBrush.Dispose(); $badgePen.Dispose(); $badgePath.Dispose()
   $badgeTextBrush.Dispose()
   $badgeFormat.Dispose(); $statsFormat.Dispose()
@@ -872,6 +886,7 @@ if ($Preview) {
   )
   $script:State = @{ ShowStats = $false; StatsText = '' }
   foreach ($shot in $shots) {
+    $script:State.ResetText = if ($shot.Name -like 'quota*') { '5h 重置还剩 4h 52m' } else { '' }
     $script:State.ShowStats = ($shot.Name -in @('stats', 'quota', 'quota-detail', 'query-1', 'query-2', 'query-3', 'working-0', 'working-1', 'working-2', 'working-3'))
     $script:State.StatsText = if ($shot.Name -eq 'stats') { '用量 58.8M｜缓存 99%｜12.3k tok/s｜¥1.5/h' } elseif ($script:State.ShowStats) { '用量 80k｜缓存 66%｜1.2k tok/s' } else { '' }
     $splat = $shot.Args
@@ -905,6 +920,8 @@ $script:State = @{
   Currency        = $null
   BalanceValue    = $null
   AccountDetail   = ''
+  ResetWindows    = @()
+  ResetText       = ''
   QueriedAt       = $null
   HasAccountSnapshot = $false
   IsRefreshing    = $false
@@ -1012,6 +1029,7 @@ function Write-PetStatus {
       provider    = $script:State.Provider
       model       = $script:State.Model
       account_detail = $script:State.AccountDetail
+      reset_text  = $script:State.ResetText
       queried_at  = $script:State.QueriedAt
       refreshing  = [bool]$script:State.IsRefreshing
       show_stats  = [bool]$script:State.ShowStats
@@ -1037,7 +1055,7 @@ function Sync-Frame {
   $expression = Get-RenderedExpression
   $animationFrame = Get-WorkingFrame
   $sleepAnimationFrame = Get-SleepAnimationFrame
-  $signature = "$expression|$animationFrame|$sleepAnimationFrame|$bubble|$($script:State.BalanceText)|$($script:State.StatusColor)|$($script:State.StatsText)|$($script:State.ShowStats)"
+  $signature = "$expression|$animationFrame|$sleepAnimationFrame|$bubble|$($script:State.BalanceText)|$($script:State.StatusColor)|$($script:State.StatsText)|$($script:State.ShowStats)|$($script:State.ResetText)"
   if (-not $Force -and $signature -eq $script:State.LastSignature) { return }
   $script:State.LastSignature = $signature
 
@@ -1081,6 +1099,8 @@ function Clear-AccountSnapshot {
   $script:State.Currency = $null
   $script:State.LowBalance = $false
   $script:State.AccountDetail = ''
+  $script:State.ResetWindows = @()
+  $script:State.ResetText = ''
   $script:State.QueriedAt = $null
   $script:State.HasAccountSnapshot = $false
   $script:State.LastError = $null
@@ -1145,6 +1165,8 @@ function Complete-BalanceQuery {
     $script:State.BalanceValue = $display.Value
     $script:State.Currency = $display.Currency
     $script:State.AccountDetail = $display.Detail
+    $script:State.ResetWindows = @($display.ResetWindows)
+    $script:State.ResetText = Get-QuotaResetText -Kind $display.Kind -Windows $script:State.ResetWindows
     $script:State.QueriedAt = $display.QueriedAt
     $script:State.HasAccountSnapshot = $true
     $script:State.LowBalance = $display.Low
@@ -1450,10 +1472,11 @@ $statsTimer = New-Object System.Windows.Forms.Timer
 $statsTimer.Interval = 5000
 $statsTimer.Add_Tick({
   Update-UsageStats
+  $script:State.ResetText = Get-QuotaResetText -Kind $script:State.AccountKind -Windows $script:State.ResetWindows
   if ($script:State.ShowStats) {
     Update-StatsText
-    Sync-Frame
   }
+  Sync-Frame
   Write-PetStatus
 })
 
