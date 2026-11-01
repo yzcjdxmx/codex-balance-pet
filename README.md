@@ -1,5 +1,7 @@
 ﻿# 余额桌宠 · Codex Balance Pet
 
+**简体中文** | [English](README.en.md)
+
 一只蹲在 Windows 桌面上的 DeepSeek 鲸鱼女仆。脚下的牌子跟着**当前模型服务商**显示账户余额或 Codex 额度，能拖动、会说话、会眨眼；跑任务时奋笔疾书，闲置久了会蜷起来打盹，19 个形象随手切换。
 
 它同时是一个 **Codex 插件**：在对话里问「余额多少」，AI 就能查到实时数据；Codex 一启动，桌宠自己就被拉起来了。
@@ -217,18 +219,3 @@ pwsh -NoProfile -File tests\launcher.test.ps1
 ## 📄 License
 
 [MIT](LICENSE) © 2026 yzcjdxmx
-
----
-
-## English (short)
-
-**Codex Balance Pet** — a per-pixel-transparent Windows desktop pet (pure PowerShell) that shows your live API balance or your Codex rate-limit quota on a little sign, plus a Codex plugin (two MCP servers: `balance`, `balance_pet`) so you can just ask the agent "how much credit do I have left?".
-
-```powershell
-git clone https://github.com/yzcjdxmx/codex-balance-pet.git
-cd codex-balance-pet
-pwsh -NoProfile -File tools\install.ps1     # copies pet + plugin into %USERPROFILE%\.codex, starts the pet
-# then enable the "balance" plugin from the local marketplace inside Codex
-```
-
-Requires Windows 10/11, PowerShell 7, Node with `node:sqlite` support, and a logged-in Codex. The pet plays a four-frame writing animation while tasks run and dozes off after 150s idle (never while a task is running). Refreshing shows animated dots in a speech bubble while retaining the previous quota display. Artwork in `pet\assets\` is bundled from unofficial DeepSeek sticker packs and will be removed on request. Code is MIT licensed.
