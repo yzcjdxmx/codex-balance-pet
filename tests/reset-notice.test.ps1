@@ -4,6 +4,30 @@ function Check($Condition, $Message) { if (-not $Condition) { throw $Message } }
 function Query($Count, $Ids, $Source='quota/fixture#account-a') {
   @{kind='quota';source_id=$Source;data=@{rateLimitResetCredits=@{availableCount=$Count;credits=@($Ids | ForEach-Object { @{id=$_} })}}}
 }
+$formatState = @{ResetNotices=@();ResetNoticeText='';AccountSource='quota/fixture#account-a'}
+Update-PetResetNotice $formatState (Query 2 @('id-1','id-2'))
+Confirm-PetResetNotice $formatState
+foreach($ids in @(@(),@('id-1'),@('id-2','id-1'),@())) {
+  Update-PetResetNotice $formatState (Query 2 $ids)
+  Check (-not $formatState.ResetNoticeText) 'Unchanged grants reappeared when complete details became count-only or partial'
+}
+Update-PetResetNotice $formatState (Query 1 @())
+Check (-not $formatState.ResetNoticeText) 'A lower count without details repeated the notice'
+Update-PetResetNotice $formatState (Query 2 @())
+Check ([bool]$formatState.ResetNoticeText) 'A genuine count increase without details was missed'
+Confirm-PetResetNotice $formatState
+Update-PetResetNotice $formatState (Query 1 @())
+Update-PetResetNotice $formatState (Query 2 @())
+Check ([bool]$formatState.ResetNoticeText) 'A later genuine count increase reused an old acknowledgment'
+$formatState.ResetNotices = @((ConvertFrom-Json ($formatState.ResetNotices | ConvertTo-Json -Depth 6 -AsArray)))
+Confirm-PetResetNotice $formatState
+Update-PetResetNotice $formatState (Query 2 @('id-1','id-3'))
+Check (-not $formatState.ResetNoticeText) 'Detail recovery after a count-only acknowledgment repeated the notice'
+$formatState = @{ResetNotices=@();ResetNoticeText='';AccountSource='quota/fixture#account-a'}
+Update-PetResetNotice $formatState (Query 2 @('id-1','id-2'))
+Confirm-PetResetNotice $formatState
+Update-PetResetNotice $formatState (Query 2 @('id-2','id-3'))
+Check ([bool]$formatState.ResetNoticeText) 'A new grant ID at the same total count was missed'
 $state = @{ ResetNotices=@(); ResetNoticeText=''; AccountSource='quota/fixture#account-a' }
 $first = Query 2 @('id-1','id-2')
 Update-PetResetNotice $state $first
@@ -27,6 +51,10 @@ Check (-not $state.ResetNoticeText) 'API balance displayed an official reset not
 $state = @{ResetNotices=@();ResetNoticeText='';AccountSource='quota/fixture#account-a'}
 Update-PetResetNotice $state (Query 2 @())
 Confirm-PetResetNotice $state
+foreach($ids in @(@('id-1'),@(),@('id-2'),@())) {
+  Update-PetResetNotice $state (Query 2 $ids)
+  Check (-not $state.ResetNoticeText) 'Partial details repeated a count-only acknowledgment'
+}
 Update-PetResetNotice $state $first
 Check (-not $state.ResetNoticeText) 'Count-only response was announced again after details arrived'
 Update-PetResetNotice $state (Query 2 @('id-2','id-3'))
