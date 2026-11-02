@@ -86,7 +86,7 @@ Write-Host '=== 2) 桌宠本体 -> 常驻目录 ==='
 New-Item -ItemType Directory -Force -Path (Join-Path $liveRoot 'assets') | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $liveRoot 'data') | Out-Null
 foreach ($file in @('balance-pet.ps1', 'pet-host.ps1', 'account-client.ps1', 'usage-reader.ps1',
-    'task-activity.ps1', 'task-activity-store.mjs', 'window-interaction.ps1', 'sprite-frames.ps1', 'start-pet.ps1', 'winless-launch.ps1',
+    'task-activity.ps1', 'task-activity-store.mjs', 'window-interaction.ps1', 'sprite-frames.ps1', 'reset-notice.ps1', 'start-pet.ps1', 'winless-launch.ps1',
     'launch_balance_pet.cmd', '启动余额桌宠.cmd', '启动余额桌宠.vbs')) {
   Copy-Item -LiteralPath (Join-Path $petSource $file) -Destination $liveRoot -Force
 }

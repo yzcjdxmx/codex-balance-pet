@@ -258,7 +258,17 @@ function cleanQuota(value) {
   }
   const rateLimits = cleanBucket(value?.rateLimits);
   if (!rateLimits && Object.keys(rateLimitsByLimitId).length === 0) throw safeError("QUOTA_UNAVAILABLE");
-  return { rateLimitsByLimitId, rateLimits };
+  const rawResets = value?.rateLimitResetCredits;
+  const resets = rawResets && Number.isSafeInteger(rawResets.availableCount) && rawResets.availableCount >= 0 ? {
+    availableCount: rawResets.availableCount,
+    credits: Array.isArray(rawResets.credits) ? rawResets.credits.filter((c) =>
+      c && typeof c.id === "string" && c.id && c.resetType === "codexRateLimits" && c.status === "available"
+    ).map((c) => ({
+      id: createHash("sha256").update(c.id).digest("hex"),
+      expiresAt: Number.isSafeInteger(c.expiresAt) ? c.expiresAt : null,
+    })) : null,
+  } : null;
+  return { rateLimitsByLimitId, rateLimits, rateLimitResetCredits: resets };
 }
 
 async function nativeBalance(account, options, deadline) {

@@ -3,6 +3,17 @@ import assert from "node:assert/strict";
 import { resolveAccount, readAccountUsage } from "../plugin/plugins/balance/account.mjs";
 
 const auth = { auth_mode: "chatgpt", tokens: { account_id: "fixture-account", access_token: "fixture-token" } };
+test("earned reset metadata is sanitized and missing availability remains unknown", async () => {
+  const account = resolveAccount({env:{}, auth, configText:'model="fixture"'});
+  const read = (resets) => readAccountUsage(account, {requestRateLimits: async () => ({rateLimits:{primary:{usedPercent:10}},rateLimitResetCredits:resets})});
+  const result = await read({availableCount:2,credits:[{id:'opaque-credit',resetType:'codexRateLimits',status:'available',expiresAt:1900000000,title:'untrusted text',accountId:'private'}]});
+  assert.equal(result.data.rateLimitResetCredits.availableCount,2);
+  assert.match(result.data.rateLimitResetCredits.credits[0].id,/^[a-f0-9]{64}$/);
+  assert.equal(JSON.stringify(result).includes('opaque-credit'),false);
+  assert.equal(JSON.stringify(result).includes('private'),false);
+  assert.equal((await read(null)).data.rateLimitResetCredits,null);
+  assert.equal((await read({availableCount:3,credits:null})).data.rateLimitResetCredits.credits,null);
+});
 function configured({ provider = "openai_http", endpoint = "https://chatgpt.com/backend-api/codex", requiresAuth = "true", login = auth } = {}) {
   return resolveAccount({ env: {}, auth: login, configText: `model="fixture-model"\nmodel_provider="${provider}"\n[model_providers.${provider}]\nbase_url="${endpoint}"\nrequires_openai_auth=${requiresAuth}\nwire_api="responses"` });
 }

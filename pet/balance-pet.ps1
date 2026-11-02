@@ -69,6 +69,7 @@ foreach ($script:AccountCandidate in @(
 }
 $script:AccountClientScript = Join-Path $PSScriptRoot 'account-client.ps1'
 . $script:AccountClientScript
+. (Join-Path $PSScriptRoot 'reset-notice.ps1')
 
 #region 数据层
 
@@ -741,7 +742,25 @@ function New-PetFrame {
   }
 
   # 台词气泡
-  if ($Bubble) {
+  $script:NoticeButtonRect = $null
+  if ($script:State.ResetNoticeText) {
+    $noticeRect = New-RoundedPath -X 10 -Y 6 -W ($script:CanvasW - 20) -H 110 -R 14
+    $noticeBrush = New-Object System.Drawing.SolidBrush([Drawing.Color]::FromArgb(250, 239, 246, 255))
+    $noticeInk = New-Object System.Drawing.SolidBrush([Drawing.Color]::FromArgb(255, 28, 48, 82))
+    $g.FillPath($noticeBrush, $noticeRect)
+    $noticeFormat = New-Object Drawing.StringFormat
+    $noticeFormat.Alignment = 'Center'
+    $g.DrawString($script:State.ResetNoticeText, $script:FontStats, $noticeInk,
+      [Drawing.RectangleF]::new(20, 14, ($script:CanvasW - 40), 40), $noticeFormat)
+    $noticeDetail = if ($Bubble -like '查询中*') { $Bubble } else { '请到 Codex 额度页查看使用条件' }
+    $g.DrawString($noticeDetail, $script:FontStats, $noticeInk,
+      [Drawing.RectangleF]::new(20, 53, ($script:CanvasW - 40), 23), $noticeFormat)
+    $script:NoticeButtonRect = [Drawing.Rectangle]::new(($script:CanvasW / 2 - 50), 80, 100, 28)
+    $g.FillRectangle([Drawing.Brushes]::LightSteelBlue, $script:NoticeButtonRect)
+    $g.DrawString('我知道了', $script:FontStats, $noticeInk,
+      [Drawing.RectangleF]::new(($script:CanvasW / 2 - 50), 84, 100, 24), $noticeFormat)
+    $noticeFormat.Dispose(); $noticeInk.Dispose(); $noticeBrush.Dispose(); $noticeRect.Dispose()
+  } elseif ($Bubble) {
     $natural = $g.MeasureString($Bubble, $script:FontBubble)
     $bubbleW = [Math]::Min($script:CanvasW - 24, [Math]::Max(140, $natural.Width + 30))
     $textWidth = $bubbleW - 26
@@ -886,6 +905,7 @@ if ($Preview) {
   )
   $script:State = @{ ShowStats = $false; StatsText = '' }
   foreach ($shot in $shots) {
+    $script:State.ResetNoticeText = if ($shot.Name -eq 'quota-detail') { 'Codex 有 2 次全额度重置机会' } else { '' }
     $script:State.ResetText = if ($shot.Name -like 'quota*') { '5h 重置还剩 4h 52m' } else { '' }
     $script:State.ShowStats = ($shot.Name -in @('stats', 'quota', 'quota-detail', 'query-1', 'query-2', 'query-3', 'working-0', 'working-1', 'working-2', 'working-3'))
     $script:State.StatsText = if ($shot.Name -eq 'stats') { '用量 58.8M｜缓存 99%｜12.3k tok/s｜¥1.5/h' } elseif ($script:State.ShowStats) { '用量 80k｜缓存 66%｜1.2k tok/s' } else { '' }
@@ -922,6 +942,8 @@ $script:State = @{
   AccountDetail   = ''
   ResetWindows    = @()
   ResetText       = ''
+  ResetNotices    = @()
+  ResetNoticeText = ''
   QueriedAt       = $null
   HasAccountSnapshot = $false
   IsRefreshing    = $false
@@ -1030,6 +1052,7 @@ function Write-PetStatus {
       model       = $script:State.Model
       account_detail = $script:State.AccountDetail
       reset_text  = $script:State.ResetText
+      reset_notice = $script:State.ResetNoticeText
       queried_at  = $script:State.QueriedAt
       refreshing  = [bool]$script:State.IsRefreshing
       show_stats  = [bool]$script:State.ShowStats
@@ -1055,7 +1078,7 @@ function Sync-Frame {
   $expression = Get-RenderedExpression
   $animationFrame = Get-WorkingFrame
   $sleepAnimationFrame = Get-SleepAnimationFrame
-  $signature = "$expression|$animationFrame|$sleepAnimationFrame|$bubble|$($script:State.BalanceText)|$($script:State.StatusColor)|$($script:State.StatsText)|$($script:State.ShowStats)|$($script:State.ResetText)"
+  $signature = "$expression|$animationFrame|$sleepAnimationFrame|$bubble|$($script:State.BalanceText)|$($script:State.StatusColor)|$($script:State.StatsText)|$($script:State.ShowStats)|$($script:State.ResetText)|$($script:State.ResetNoticeText)"
   if (-not $Force -and $signature -eq $script:State.LastSignature) { return }
   $script:State.LastSignature = $signature
 
@@ -1101,6 +1124,7 @@ function Clear-AccountSnapshot {
   $script:State.AccountDetail = ''
   $script:State.ResetWindows = @()
   $script:State.ResetText = ''
+  $script:State.ResetNoticeText = ''
   $script:State.QueriedAt = $null
   $script:State.HasAccountSnapshot = $false
   $script:State.LastError = $null
@@ -1119,6 +1143,7 @@ function Update-Balance {
     $script:State.AccountKind = $source.kind
     $script:State.Provider = $source.provider
     $script:State.Model = $source.model
+    Update-PetResetNotice -State $script:State -Query $source
   } catch {
     $script:State.LastError = '无法识别当前账户，请检查查询模块'
     $script:State.StatusColor = 'Error'
@@ -1167,6 +1192,8 @@ function Complete-BalanceQuery {
     $script:State.AccountDetail = $display.Detail
     $script:State.ResetWindows = @($display.ResetWindows)
     $script:State.ResetText = Get-QuotaResetText -Kind $display.Kind -Windows $script:State.ResetWindows
+    Update-PetResetNotice -State $script:State -Query $query
+    Save-PetPosition
     $script:State.QueriedAt = $display.QueriedAt
     $script:State.HasAccountSnapshot = $true
     $script:State.LowBalance = $display.Low
@@ -1204,8 +1231,9 @@ function Save-PetPosition {
       stats     = [bool]$script:State.ShowStats
       topMost   = [bool]$script:State.TopMost
       noActivate = [bool]$script:State.NoActivate
+      resetNotices = @($script:State.ResetNotices)
       updatedAt = (Get-Date).ToString('s')
-    } | ConvertTo-Json | Set-Content -LiteralPath $script:StateFile -Encoding utf8
+    } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $script:StateFile -Encoding utf8
   } catch { }
 }
 
@@ -1217,7 +1245,7 @@ function Get-SavedState {
         $showSavedStats = if ($null -ne $saved.stats) { [bool]$saved.stats } else { $true }
         $savedTopMost = if ($saved.topMost -is [bool]) { $saved.topMost } else { $true }
         $savedNoActivate = if ($saved.noActivate -is [bool]) { $saved.noActivate } else { $true }
-        return @{ X = [int]$saved.x; Y = [int]$saved.y; Look = $saved.look; Stats = $showSavedStats; TopMost = $savedTopMost; NoActivate = $savedNoActivate }
+        return @{ X = [int]$saved.x; Y = [int]$saved.y; Look = $saved.look; Stats = $showSavedStats; TopMost = $savedTopMost; NoActivate = $savedNoActivate; ResetNotices = @($saved.resetNotices | Where-Object { $_.Source }) }
       }
     }
   } catch { }
@@ -1251,6 +1279,7 @@ if ($saved) {
   $script:State.ShowStats = [bool]$saved.Stats
   $script:State.TopMost = [bool]$saved.TopMost
   $script:State.NoActivate = [bool]$saved.NoActivate
+  $script:State.ResetNotices = @($saved.ResetNotices)
   $script:BaseX = $saved.X
   $script:BaseY = $saved.Y
 } else {
@@ -1267,6 +1296,11 @@ $script:Drag = @{ Active = $false; Offset = $null; Moved = $false }
 $form.Add_MouseDown({
   param($sender, $event)
   if ($event.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
+    if ($script:NoticeButtonRect -and $script:NoticeButtonRect.Contains($event.Location)) {
+      $script:NoticePress = $true
+      $script:Form.Capture = $true
+      return
+    }
     $script:Drag.Active = $true
     $script:Drag.Moved = $false
     $script:Drag.Offset = $event.Location
@@ -1300,6 +1334,16 @@ $form.Add_MouseUp({
   param($sender, $event)
   $script:Form.Capture = $false
   if ($event.Button -ne [System.Windows.Forms.MouseButtons]::Left) { return }
+  if ($script:NoticePress) {
+    $script:NoticePress = $false
+    if ($script:NoticeButtonRect -and $script:NoticeButtonRect.Contains($event.Location)) {
+      Confirm-PetResetNotice -State $script:State
+      Save-PetPosition
+      Sync-Frame -Force
+      Write-PetStatus
+    }
+    return
+  }
   $wasDragging = $script:Drag.Active
   $script:Drag.Active = $false
   if (-not $wasDragging) { return }

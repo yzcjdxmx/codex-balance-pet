@@ -41,6 +41,7 @@ for ($installTestPass = 1; $installTestPass -le 2; $installTestPass++) {
   Assert-InstallTest (Test-Path -LiteralPath (Join-Path $installTestPet 'task-activity-store.mjs')) 'Task activity helper was not installed.'
   Assert-InstallTest (Test-Path -LiteralPath (Join-Path $installTestPet 'window-interaction.ps1')) 'Window interaction helper was not installed.'
   Assert-InstallTest (Test-Path -LiteralPath (Join-Path $installTestPet 'sprite-frames.ps1')) 'Sprite frame helper was not installed.'
+  Assert-InstallTest (Test-Path -LiteralPath (Join-Path $installTestPet 'reset-notice.ps1')) 'Reset notice helper was not installed.'
   Assert-InstallTest (Test-Path -LiteralPath (Join-Path $installTestPet '启动余额桌宠.vbs')) 'The VBS launcher was not installed.'
   Assert-InstallTest (Test-Path -LiteralPath (Join-Path $installTestPet 'assets\pet-blink.png')) 'The closed-eye image was not installed.'
   Assert-InstallTest (Test-Path -LiteralPath (Join-Path $installTestPet 'assets\pet-working-atlas-v1.png')) 'Working animation atlas was not installed.'
